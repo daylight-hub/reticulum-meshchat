@@ -1,4 +1,4 @@
-name: Temporary manual trigger for Docker build
+name: Manual Docker build (fork)
 
 on:
   workflow_dispatch:
@@ -12,6 +12,11 @@ jobs:
     steps:
       - name: Clone Repo
         uses: actions/checkout@v4
+
+      # ghcr image names must be lowercase; derive it from the fork owner.
+      - name: Compute image name
+        id: img
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/reticulum-meshchat" >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -32,11 +37,10 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
+          # Fixed tags — no slash-containing ref_name, so this works on any branch.
           tags: |
-            ghcr.io/liamcottle/reticulum-meshchat:latest
-            ghcr.io/liamcottle/reticulum-meshchat:${{ github.ref_name }}
+            ${{ steps.img.outputs.name }}:latest
+            ${{ steps.img.outputs.name }}:lxst
           labels: |
             org.opencontainers.image.title=Reticulum MeshChat
-            org.opencontainers.image.description=Docker image for Reticulum MeshChat
-            org.opencontainers.image.url=https://github.com/liamcottle/reticulum-meshchat/pkgs/container/reticulum-meshchat/
-
+            org.opencontainers.image.description=Docker image for Reticulum MeshChat (rns 1.3.5 / lxmf 1.0.1 / lxst 0.4.8)
