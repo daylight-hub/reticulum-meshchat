@@ -1,23 +1,31 @@
 name: Build and Release
 
 on:
+  # Cutting a tag (git tag vX.Y.Z && git push --tags) builds + releases automatically.
   push:
     tags:
       - "*"
+  # ...or run it by hand from the Actions tab ("Run workflow"), supplying a tag name.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to create (e.g. v2.3.0-lxst)"
+        required: true
+        type: string
 
 jobs:
   build_windows:
     runs-on: windows-latest
     permissions:
-      contents: write
+      contents: write   # needed to create the release in YOUR repo
     steps:
       - name: Clone Repo
-        uses: actions/checkout@v1
+        uses: actions/checkout@v4
 
       - name: Install NodeJS
-        uses: actions/setup-node@v1
+        uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
 
       - name: Install Python
         uses: actions/setup-python@v5
@@ -30,13 +38,13 @@ jobs:
       - name: Install NodeJS Deps
         run: npm install
 
-      - name: Build Electron App
+      - name: Build Electron App (.exe)
         run: npm run dist
 
-      - name: Create Release
-        id: create_release
+      - name: Create / update Release
         uses: ncipollo/release-action@v1
         with:
+          tag: ${{ inputs.tag || github.ref_name }}
           draft: true
           allowUpdates: true
           replacesArtifacts: true
@@ -50,12 +58,12 @@ jobs:
       contents: write
     steps:
       - name: Clone Repo
-        uses: actions/checkout@v1
+        uses: actions/checkout@v4
 
       - name: Install NodeJS
-        uses: actions/setup-node@v1
+        uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
 
       - name: Install Python
         uses: actions/setup-python@v5
@@ -71,10 +79,10 @@ jobs:
       - name: Build Electron App
         run: npm run dist
 
-      - name: Create Release
-        id: create_release
+      - name: Create / update Release
         uses: ncipollo/release-action@v1
         with:
+          tag: ${{ inputs.tag || github.ref_name }}
           draft: true
           allowUpdates: true
           replacesArtifacts: true
@@ -88,12 +96,12 @@ jobs:
       contents: write
     steps:
       - name: Clone Repo
-        uses: actions/checkout@v1
+        uses: actions/checkout@v4
 
       - name: Install NodeJS
-        uses: actions/setup-node@v1
+        uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
 
       - name: Install Python
         uses: actions/setup-python@v5
@@ -109,10 +117,10 @@ jobs:
       - name: Build Electron App
         run: npm run dist
 
-      - name: Create Release
-        id: create_release
+      - name: Create / update Release
         uses: ncipollo/release-action@v1
         with:
+          tag: ${{ inputs.tag || github.ref_name }}
           draft: true
           allowUpdates: true
           replacesArtifacts: true
@@ -128,6 +136,11 @@ jobs:
     steps:
       - name: Clone Repo
         uses: actions/checkout@v4
+
+      # ghcr image names must be lowercase; derive it from YOUR account.
+      - name: Compute image name
+        id: img
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/reticulum-meshchat" >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -149,9 +162,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ghcr.io/liamcottle/reticulum-meshchat:latest
-            ghcr.io/liamcottle/reticulum-meshchat:${{ github.ref_name }}
+            ${{ steps.img.outputs.name }}:latest
+            ${{ steps.img.outputs.name }}:lxst
           labels: |
             org.opencontainers.image.title=Reticulum MeshChat
-            org.opencontainers.image.description=Docker image for Reticulum MeshChat
-            org.opencontainers.image.url=https://github.com/liamcottle/reticulum-meshchat/pkgs/container/reticulum-meshchat/
+            org.opencontainers.image.description=Docker image for Reticulum MeshChat (rns 1.3.5 / lxmf 1.0.1 / lxst 0.4.8)
