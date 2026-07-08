@@ -4,17 +4,60 @@
         <!-- header -->
         <div class="flex bg-white dark:bg-zinc-950 p-2 border-gray-300 dark:border-zinc-900 border-b min-h-16">
             <div class="flex w-full">
-                <div class="hidden sm:flex my-auto w-12 h-12 mr-2">
-                    <img class="w-12 h-12" src="/assets/images/logo-chat-bubble.png" />
+                <div class="hidden sm:flex my-auto mr-3">
+                    <div class="w-12 h-12 rounded-full ring-2 ring-[#1e5aa0]/70 shadow-md p-0.5 bg-white flex items-center justify-center">
+                        <img class="w-full h-full object-contain rounded-full" src="/assets/images/lcs-logo.png" alt="Liberty Communication Systems" />
+                    </div>
                 </div>
                 <div class="my-auto">
-                    <div @click="onAppNameClick" class="font-bold cursor-pointer text-gray-900 dark:text-zinc-100">Reticulum MeshChat</div>
-                    <div class="text-sm text-gray-700 dark:text-white">
-                        Developed by
-                        <a target="_blank" href="https://liamcottle.com" class="text-blue-500 dark:text-blue-400">Liam Cottle</a>
+                    <div @click="onAppNameClick" class="flex items-center gap-2 cursor-pointer">
+                        <span class="font-bold text-lg tracking-tight bg-gradient-to-r from-[#1e5aa0] to-[#123a6b] dark:from-[#5b9be0] dark:to-[#2f6fc0] bg-clip-text text-transparent">LCS MeshChat</span>
+                    </div>
+                    <div class="text-xs text-gray-600 dark:text-zinc-300 font-medium tracking-wide uppercase">
+                        Liberty Communication Systems
+                    </div>
+                    <div class="text-[11px] text-gray-400 dark:text-zinc-500">
+                        built on <a target="_blank" href="https://liamcottle.com" class="text-blue-500 dark:text-blue-400 hover:underline">MeshChat by Liam Cottle</a>
                     </div>
                 </div>
                 <div class="flex my-auto ml-auto mr-0 sm:mr-2 space-x-1 sm:space-x-2">
+
+                    <!-- LCS: Back button (web/docker build only) -->
+                    <button v-if="isWeb" @click="goBack" type="button" title="Go back" class="rounded-full group">
+                        <span class="flex items-center text-white bg-gradient-to-br from-[#1e5aa0] to-[#123a6b] hover:from-[#2f6fc0] hover:to-[#1a4d8f] shadow-sm hover:shadow-md transition-all duration-150 active:scale-95 px-2 py-1 rounded-full">
+                            <span>
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" class="w-6 h-6">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
+                                </svg>
+                            </span>
+                            <span class="hidden sm:inline-block my-auto mx-1 text-sm font-medium">Back</span>
+                        </span>
+                    </button>
+
+                    <!-- LCS: Add Preset Interfaces button (web/docker build only) -->
+                    <button v-if="isWeb" @click="addLcsPresets" type="button" title="Add LCS Preset Interfaces" class="rounded-full group">
+                        <span class="flex items-center text-white bg-gradient-to-br from-[#178a5a] to-[#0d5e3c] hover:from-[#1fa96e] hover:to-[#127a4f] shadow-sm hover:shadow-md transition-all duration-150 active:scale-95 px-2 py-1 rounded-full">
+                            <span :class="{ 'animate-spin': isAddingLcsPresets }">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" class="w-6 h-6">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                                </svg>
+                            </span>
+                            <span class="hidden lg:inline-block my-auto mx-1 text-sm font-medium">Add LCS Interfaces</span>
+                        </span>
+                    </button>
+
+                    <!-- LCS: Restart button (web/docker build only) -->
+                    <button v-if="isWeb" @click="restartApp" type="button" title="Restart MeshChat" class="rounded-full group">
+                        <span class="flex items-center text-white bg-gradient-to-br from-[#c9a227] to-[#8a6d12] hover:from-[#e0b73a] hover:to-[#a8871a] shadow-sm hover:shadow-md transition-all duration-150 active:scale-95 px-2 py-1 rounded-full">
+                            <span :class="{ 'animate-spin': isRestarting }">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" class="w-6 h-6">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+                                </svg>
+                            </span>
+                            <span class="hidden sm:inline-block my-auto mx-1 text-sm font-medium">Restart</span>
+                        </span>
+                    </button>
+
                     <button @click="syncPropagationNode" type="button" class="rounded-full">
                         <span class="flex text-gray-700 dark:text-white bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-600 px-2 py-1 rounded-full">
                             <span :class="{ 'animate-spin': isSyncingPropagationNode }">
@@ -136,6 +179,16 @@
                                     </template>
                                     <template v-slot:text>About</template>
                                 </SidebarLink>
+                            </li>
+
+                            <!-- LCS: purchase / website link (always visible) -->
+                            <li>
+                                <a target="_blank" href="https://lcs.network" class="flex items-center gap-x-3 rounded-md px-2 py-2 text-sm font-semibold text-white bg-gradient-to-r from-[#1e5aa0] to-[#123a6b] hover:from-[#2f6fc0] hover:to-[#1a4d8f] shadow-sm transition-all">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6 shrink-0">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 0 0 8.716-6.747M12 21a9.004 9.004 0 0 1-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 0 1 7.843 4.582M12 3a8.997 8.997 0 0 0-7.843 4.582m15.686 0A11.953 11.953 0 0 1 12 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0 1 21 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0 1 12 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 0 1 3 12c0-1.605.42-3.113 1.157-4.418" />
+                                    </svg>
+                                    <span>Buy RNode Radios &middot; lcs.network</span>
+                                </a>
                             </li>
 
                         </ul>
@@ -344,6 +397,7 @@ import GlobalState from "../js/GlobalState";
 import Utils from "../js/Utils";
 import GlobalEmitter from "../js/GlobalEmitter";
 import NotificationUtils from "../js/NotificationUtils";
+import ElectronUtils from "../js/ElectronUtils";
 import LxmfUserIcon from "./LxmfUserIcon.vue";
 
 export default {
@@ -354,6 +408,8 @@ export default {
     },
     data() {
         return {
+            isRestarting: false,
+            isAddingLcsPresets: false,
 
             reloadInterval: null,
 
@@ -623,6 +679,46 @@ export default {
                 // ignore error
             }
         },
+        async addLcsPresets() {
+            // adds the LCS preset interfaces (public TCP backbone + RNode LoRa template)
+            // to the reticulum config via the backend.
+            if (this.isAddingLcsPresets) {
+                return;
+            }
+            const confirmed = await DialogUtils.confirm("Add the LCS preset interfaces?\n\n\u2022 TCP Client to public.lcs.network:1776 (enabled)\n\u2022 RNode LoRa Interface (disabled - set your serial port to use it)\n\nExisting interfaces will not be changed. MeshChat must be restarted afterwards.");
+            if (!confirmed) {
+                return;
+            }
+            this.isAddingLcsPresets = true;
+            try {
+                const response = await window.axios.post("/api/v1/reticulum/interfaces/add-lcs-presets");
+                await DialogUtils.alert(response.data.message);
+            } catch (e) {
+                const message = e?.response?.data?.message ?? "Failed to add LCS preset interfaces.";
+                await DialogUtils.alert(message);
+            } finally {
+                this.isAddingLcsPresets = false;
+            }
+        },
+        goBack() {
+            // return to the previous page (browser/router history)
+            if (window.history.length > 1) {
+                this.$router.back();
+            } else {
+                // no history to go back to; fall back to the messages view
+                this.$router.push({ name: "messages" }).catch(() => {});
+            }
+        },
+        restartApp() {
+            // restarts the MeshChat web app: reloads the page, which re-establishes
+            // the websocket connection and re-fetches all state from the backend.
+            // (this does NOT restart the docker container - that is intentionally
+            // not exposed to the browser for security reasons.)
+            this.isRestarting = true;
+            setTimeout(() => {
+                window.location.reload();
+            }, 400);
+        },
         onAppNameClick() {
             // user may be on mobile, and is unable to scroll back to sidebar, so let them tap app name to do it
             this.$refs["middle"].scrollTo({
@@ -633,6 +729,11 @@ export default {
         },
     },
     computed: {
+        isWeb() {
+            // true in the web/docker build; false in the electron desktop app.
+            // the LCS Home/Restart buttons are only shown in the web/docker build.
+            return !ElectronUtils.isElectron();
+        },
         Utils() {
             return Utils;
         },

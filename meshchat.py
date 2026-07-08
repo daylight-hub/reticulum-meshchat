@@ -121,6 +121,12 @@ class ReticulumMeshChat:
         self.reticulum = RNS.Reticulum(reticulum_config_dir)
         self.identity = identity
 
+        # on desktop (frozen) builds only, ensure LCS default interfaces exist in the reticulum config
+        try:
+            self.ensure_lcs_default_interfaces()
+        except Exception as e:
+            RNS.log(f"Could not ensure LCS default interfaces: {e}", RNS.LOG_WARNING)
+
         # init lxmf router
         self.message_router = LXMF.LXMRouter(identity=self.identity, storagepath=lxmf_router_path)
         self.message_router.PROCESSING_INTERVAL = 1
@@ -172,6 +178,61 @@ class ReticulumMeshChat:
         thread = threading.Thread(target=asyncio.run, args=(self.announce_sync_propagation_nodes(),))
         thread.daemon = True
         thread.start()
+
+    # adds the LCS preset interfaces (public TCP backbone + RNode LoRa template) to the
+    # reticulum config using the config object. append-only and idempotent: an interface is
+    # only added if not already present; existing interfaces are never modified. returns the
+    # list of interface names that were added.
+    def add_lcs_preset_interfaces(self):
+
+        added = []
+
+        # ensure interfaces section exists
+        if "interfaces" not in self.reticulum.config:
+            self.reticulum.config["interfaces"] = {}
+        interfaces = self.reticulum.config["interfaces"]
+
+        # LCS public TCP backbone (enabled)
+        tcp_name = "TCP Client Interface: public.lcs.network"
+        if tcp_name not in interfaces:
+            interfaces[tcp_name] = {
+                "type": "TCPClientInterface",
+                "enabled": "yes",
+                "mode": "gateway",
+                "target_host": "public.lcs.network",
+                "target_port": "1776",
+            }
+            added.append(tcp_name)
+
+        # LCS RNode LoRa template (disabled by default - user must set the serial port)
+        rnode_name = "RNode LoRa Interface"
+        if rnode_name not in interfaces:
+            interfaces[rnode_name] = {
+                "type": "RNodeInterface",
+                "mode": "gateway",
+                "enabled": "no",
+                "port": "",
+                "frequency": "914875000",
+                "bandwidth": "250000",
+                "txpower": "22",
+                "spreadingfactor": "11",
+                "codingrate": "5",
+            }
+            added.append(rnode_name)
+
+        # write config only if something was added
+        if len(added) > 0:
+            self.reticulum.config.write()
+            RNS.log(f"Added LCS preset interface(s): {', '.join(added)}", RNS.LOG_NOTICE)
+
+        return added
+
+    # on desktop (frozen) builds, auto-add the LCS preset interfaces on startup.
+    # does nothing on web/docker builds (the header button is used there instead).
+    def ensure_lcs_default_interfaces(self):
+        if not getattr(sys, "frozen", False):
+            return
+        self.add_lcs_preset_interfaces()
 
     # init telephone
     def init_telephone(self):
@@ -716,6 +777,25 @@ class ReticulumMeshChat:
             return web.json_response({
                 "message": "Interface is now disabled",
             })
+
+        # add LCS preset interfaces (public TCP backbone + RNode LoRa template)
+        @routes.post("/api/v1/reticulum/interfaces/add-lcs-presets")
+        async def index(request):
+            try:
+                added = self.add_lcs_preset_interfaces()
+                if len(added) == 0:
+                    return web.json_response({
+                        "message": "LCS preset interfaces are already present.",
+                        "added": [],
+                    })
+                return web.json_response({
+                    "message": "LCS preset interfaces added. Please restart MeshChat for these changes to take effect.",
+                    "added": added,
+                })
+            except Exception as e:
+                return web.json_response({
+                    "message": f"Failed to add LCS preset interfaces: {e}",
+                }, status=500)
 
         # delete reticulum interface
         @routes.post("/api/v1/reticulum/interfaces/delete")

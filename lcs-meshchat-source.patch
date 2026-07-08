@@ -1,0 +1,339 @@
+diff --git a/meshchat.py b/meshchat.py
+index a6f77ee..83e5fd4 100644
+--- a/meshchat.py
++++ b/meshchat.py
+@@ -121,6 +121,12 @@ class ReticulumMeshChat:
+         self.reticulum = RNS.Reticulum(reticulum_config_dir)
+         self.identity = identity
+ 
++        # on desktop (frozen) builds only, ensure LCS default interfaces exist in the reticulum config
++        try:
++            self.ensure_lcs_default_interfaces()
++        except Exception as e:
++            RNS.log(f"Could not ensure LCS default interfaces: {e}", RNS.LOG_WARNING)
++
+         # init lxmf router
+         self.message_router = LXMF.LXMRouter(identity=self.identity, storagepath=lxmf_router_path)
+         self.message_router.PROCESSING_INTERVAL = 1
+@@ -173,6 +179,61 @@ class ReticulumMeshChat:
+         thread.daemon = True
+         thread.start()
+ 
++    # adds the LCS preset interfaces (public TCP backbone + RNode LoRa template) to the
++    # reticulum config using the config object. append-only and idempotent: an interface is
++    # only added if not already present; existing interfaces are never modified. returns the
++    # list of interface names that were added.
++    def add_lcs_preset_interfaces(self):
++
++        added = []
++
++        # ensure interfaces section exists
++        if "interfaces" not in self.reticulum.config:
++            self.reticulum.config["interfaces"] = {}
++        interfaces = self.reticulum.config["interfaces"]
++
++        # LCS public TCP backbone (enabled)
++        tcp_name = "TCP Client Interface: public.lcs.network"
++        if tcp_name not in interfaces:
++            interfaces[tcp_name] = {
++                "type": "TCPClientInterface",
++                "enabled": "yes",
++                "mode": "gateway",
++                "target_host": "public.lcs.network",
++                "target_port": "1776",
++            }
++            added.append(tcp_name)
++
++        # LCS RNode LoRa template (disabled by default - user must set the serial port)
++        rnode_name = "RNode LoRa Interface"
++        if rnode_name not in interfaces:
++            interfaces[rnode_name] = {
++                "type": "RNodeInterface",
++                "mode": "gateway",
++                "enabled": "no",
++                "port": "",
++                "frequency": "914875000",
++                "bandwidth": "250000",
++                "txpower": "22",
++                "spreadingfactor": "11",
++                "codingrate": "5",
++            }
++            added.append(rnode_name)
++
++        # write config only if something was added
++        if len(added) > 0:
++            self.reticulum.config.write()
++            RNS.log(f"Added LCS preset interface(s): {', '.join(added)}", RNS.LOG_NOTICE)
++
++        return added
++
++    # on desktop (frozen) builds, auto-add the LCS preset interfaces on startup.
++    # does nothing on web/docker builds (the header button is used there instead).
++    def ensure_lcs_default_interfaces(self):
++        if not getattr(sys, "frozen", False):
++            return
++        self.add_lcs_preset_interfaces()
++
+     # init telephone
+     def init_telephone(self):
+         self.telephone = Telephone(identity=self.identity)
+@@ -717,6 +778,25 @@ class ReticulumMeshChat:
+                 "message": "Interface is now disabled",
+             })
+ 
++        # add LCS preset interfaces (public TCP backbone + RNode LoRa template)
++        @routes.post("/api/v1/reticulum/interfaces/add-lcs-presets")
++        async def index(request):
++            try:
++                added = self.add_lcs_preset_interfaces()
++                if len(added) == 0:
++                    return web.json_response({
++                        "message": "LCS preset interfaces are already present.",
++                        "added": [],
++                    })
++                return web.json_response({
++                    "message": "LCS preset interfaces added. Please restart MeshChat for these changes to take effect.",
++                    "added": added,
++                })
++            except Exception as e:
++                return web.json_response({
++                    "message": f"Failed to add LCS preset interfaces: {e}",
++                }, status=500)
++
+         # delete reticulum interface
+         @routes.post("/api/v1/reticulum/interfaces/delete")
+         async def index(request):
+@@ -2038,6 +2118,10 @@ class ReticulumMeshChat:
+             if "transport_id" in interface_stats:
+                 interface_stats["transport_id"] = interface_stats["transport_id"].hex()
+ 
++            # ensure network_id is hex as json_response can't serialize bytes
++            if "network_id" in interface_stats and interface_stats["network_id"] is not None:
++                interface_stats["network_id"] = interface_stats["network_id"].hex()
++
+             # ensure probe_responder is hex as json_response can't serialize bytes
+             if "probe_responder" in interface_stats and interface_stats["probe_responder"] is not None:
+                 interface_stats["probe_responder"] = interface_stats["probe_responder"].hex()
+diff --git a/requirements.txt b/requirements.txt
+index 5d45d74..294c0c2 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -1,8 +1,8 @@
+-aiohttp>=3.12.14
++aiohttp>=3.13.3
+ cx_freeze>=8.5.0
+-lxmf>=0.9.2
+-lxst>=0.4.4
+-peewee>=3.18.1
++lxmf>=1.0.1
++lxst>=0.4.8
++peewee>=3.18.1,<4.0.0
+ pycparser==2.14
+-rns>=1.0.2
+-websockets>=14.2
++rns>=1.3.7
++websockets>=16.0
+diff --git a/src/frontend/components/App.vue b/src/frontend/components/App.vue
+index 71d727e..86c9a5b 100644
+--- a/src/frontend/components/App.vue
++++ b/src/frontend/components/App.vue
+@@ -4,17 +4,60 @@
+         <!-- header -->
+         <div class="flex bg-white dark:bg-zinc-950 p-2 border-gray-300 dark:border-zinc-900 border-b min-h-16">
+             <div class="flex w-full">
+-                <div class="hidden sm:flex my-auto w-12 h-12 mr-2">
+-                    <img class="w-12 h-12" src="/assets/images/logo-chat-bubble.png" />
++                <div class="hidden sm:flex my-auto mr-3">
++                    <div class="w-12 h-12 rounded-full ring-2 ring-[#1e5aa0]/70 shadow-md p-0.5 bg-white flex items-center justify-center">
++                        <img class="w-full h-full object-contain rounded-full" src="/assets/images/lcs-logo.png" alt="Liberty Communication Systems" />
++                    </div>
+                 </div>
+                 <div class="my-auto">
+-                    <div @click="onAppNameClick" class="font-bold cursor-pointer text-gray-900 dark:text-zinc-100">Reticulum MeshChat</div>
+-                    <div class="text-sm text-gray-700 dark:text-white">
+-                        Developed by
+-                        <a target="_blank" href="https://liamcottle.com" class="text-blue-500 dark:text-blue-400">Liam Cottle</a>
++                    <div @click="onAppNameClick" class="flex items-center gap-2 cursor-pointer">
++                        <span class="font-bold text-lg tracking-tight bg-gradient-to-r from-[#1e5aa0] to-[#123a6b] dark:from-[#5b9be0] dark:to-[#2f6fc0] bg-clip-text text-transparent">LCS MeshChat</span>
++                    </div>
++                    <div class="text-xs text-gray-600 dark:text-zinc-300 font-medium tracking-wide uppercase">
++                        Liberty Communication Systems
++                    </div>
++                    <div class="text-[11px] text-gray-400 dark:text-zinc-500">
++                        built on <a target="_blank" href="https://liamcottle.com" class="text-blue-500 dark:text-blue-400 hover:underline">MeshChat by Liam Cottle</a>
+                     </div>
+                 </div>
+                 <div class="flex my-auto ml-auto mr-0 sm:mr-2 space-x-1 sm:space-x-2">
++
++                    <!-- LCS: Back button (web/docker build only) -->
++                    <button v-if="isWeb" @click="goBack" type="button" title="Go back" class="rounded-full group">
++                        <span class="flex items-center text-white bg-gradient-to-br from-[#1e5aa0] to-[#123a6b] hover:from-[#2f6fc0] hover:to-[#1a4d8f] shadow-sm hover:shadow-md transition-all duration-150 active:scale-95 px-2 py-1 rounded-full">
++                            <span>
++                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" class="w-6 h-6">
++                                    <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
++                                </svg>
++                            </span>
++                            <span class="hidden sm:inline-block my-auto mx-1 text-sm font-medium">Back</span>
++                        </span>
++                    </button>
++
++                    <!-- LCS: Add Preset Interfaces button (web/docker build only) -->
++                    <button v-if="isWeb" @click="addLcsPresets" type="button" title="Add LCS Preset Interfaces" class="rounded-full group">
++                        <span class="flex items-center text-white bg-gradient-to-br from-[#178a5a] to-[#0d5e3c] hover:from-[#1fa96e] hover:to-[#127a4f] shadow-sm hover:shadow-md transition-all duration-150 active:scale-95 px-2 py-1 rounded-full">
++                            <span :class="{ 'animate-spin': isAddingLcsPresets }">
++                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" class="w-6 h-6">
++                                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
++                                </svg>
++                            </span>
++                            <span class="hidden lg:inline-block my-auto mx-1 text-sm font-medium">Add LCS Interfaces</span>
++                        </span>
++                    </button>
++
++                    <!-- LCS: Restart button (web/docker build only) -->
++                    <button v-if="isWeb" @click="restartApp" type="button" title="Restart MeshChat" class="rounded-full group">
++                        <span class="flex items-center text-white bg-gradient-to-br from-[#c9a227] to-[#8a6d12] hover:from-[#e0b73a] hover:to-[#a8871a] shadow-sm hover:shadow-md transition-all duration-150 active:scale-95 px-2 py-1 rounded-full">
++                            <span :class="{ 'animate-spin': isRestarting }">
++                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" class="w-6 h-6">
++                                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
++                                </svg>
++                            </span>
++                            <span class="hidden sm:inline-block my-auto mx-1 text-sm font-medium">Restart</span>
++                        </span>
++                    </button>
++
+                     <button @click="syncPropagationNode" type="button" class="rounded-full">
+                         <span class="flex text-gray-700 dark:text-white bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-600 px-2 py-1 rounded-full">
+                             <span :class="{ 'animate-spin': isSyncingPropagationNode }">
+@@ -138,6 +181,16 @@
+                                 </SidebarLink>
+                             </li>
+ 
++                            <!-- LCS: purchase / website link (always visible) -->
++                            <li>
++                                <a target="_blank" href="https://lcs.network" class="flex items-center gap-x-3 rounded-md px-2 py-2 text-sm font-semibold text-white bg-gradient-to-r from-[#1e5aa0] to-[#123a6b] hover:from-[#2f6fc0] hover:to-[#1a4d8f] shadow-sm transition-all">
++                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6 shrink-0">
++                                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 0 0 8.716-6.747M12 21a9.004 9.004 0 0 1-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 0 1 7.843 4.582M12 3a8.997 8.997 0 0 0-7.843 4.582m15.686 0A11.953 11.953 0 0 1 12 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0 1 21 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0 1 12 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 0 1 3 12c0-1.605.42-3.113 1.157-4.418" />
++                                    </svg>
++                                    <span>Buy RNode Radios &middot; lcs.network</span>
++                                </a>
++                            </li>
++
+                         </ul>
+                     </div>
+ 
+@@ -344,6 +397,7 @@ import GlobalState from "../js/GlobalState";
+ import Utils from "../js/Utils";
+ import GlobalEmitter from "../js/GlobalEmitter";
+ import NotificationUtils from "../js/NotificationUtils";
++import ElectronUtils from "../js/ElectronUtils";
+ import LxmfUserIcon from "./LxmfUserIcon.vue";
+ 
+ export default {
+@@ -354,6 +408,8 @@ export default {
+     },
+     data() {
+         return {
++            isRestarting: false,
++            isAddingLcsPresets: false,
+ 
+             reloadInterval: null,
+ 
+@@ -623,6 +679,46 @@ export default {
+                 // ignore error
+             }
+         },
++        async addLcsPresets() {
++            // adds the LCS preset interfaces (public TCP backbone + RNode LoRa template)
++            // to the reticulum config via the backend.
++            if (this.isAddingLcsPresets) {
++                return;
++            }
++            const confirmed = await DialogUtils.confirm("Add the LCS preset interfaces?\n\n\u2022 TCP Client to public.lcs.network:1776 (enabled)\n\u2022 RNode LoRa Interface (disabled - set your serial port to use it)\n\nExisting interfaces will not be changed. MeshChat must be restarted afterwards.");
++            if (!confirmed) {
++                return;
++            }
++            this.isAddingLcsPresets = true;
++            try {
++                const response = await window.axios.post("/api/v1/reticulum/interfaces/add-lcs-presets");
++                await DialogUtils.alert(response.data.message);
++            } catch (e) {
++                const message = e?.response?.data?.message ?? "Failed to add LCS preset interfaces.";
++                await DialogUtils.alert(message);
++            } finally {
++                this.isAddingLcsPresets = false;
++            }
++        },
++        goBack() {
++            // return to the previous page (browser/router history)
++            if (window.history.length > 1) {
++                this.$router.back();
++            } else {
++                // no history to go back to; fall back to the messages view
++                this.$router.push({ name: "messages" }).catch(() => {});
++            }
++        },
++        restartApp() {
++            // restarts the MeshChat web app: reloads the page, which re-establishes
++            // the websocket connection and re-fetches all state from the backend.
++            // (this does NOT restart the docker container - that is intentionally
++            // not exposed to the browser for security reasons.)
++            this.isRestarting = true;
++            setTimeout(() => {
++                window.location.reload();
++            }, 400);
++        },
+         onAppNameClick() {
+             // user may be on mobile, and is unable to scroll back to sidebar, so let them tap app name to do it
+             this.$refs["middle"].scrollTo({
+@@ -633,6 +729,11 @@ export default {
+         },
+     },
+     computed: {
++        isWeb() {
++            // true in the web/docker build; false in the electron desktop app.
++            // the LCS Home/Restart buttons are only shown in the web/docker build.
++            return !ElectronUtils.isElectron();
++        },
+         Utils() {
+             return Utils;
+         },
+diff --git a/src/frontend/components/tools/ToolsPage.vue b/src/frontend/components/tools/ToolsPage.vue
+index ee47e82..56c8147 100644
+--- a/src/frontend/components/tools/ToolsPage.vue
++++ b/src/frontend/components/tools/ToolsPage.vue
+@@ -38,7 +38,7 @@
+                     </div>
+                 </div>
+                 <div class="my-auto mr-auto dark:text-gray-200">
+-                    <div class="font-bold">RNode Flasher</div>
++                    <div class="font-bold">LCS RNode Flasher</div>
+                     <div class="text-sm">Flash RNode firmware to supported devices.</div>
+                 </div>
+                 <div class="my-auto text-gray-400 group-hover:text-gray-500">
+@@ -48,6 +48,26 @@
+                 </div>
+             </a>
+ 
++            <!-- purchase rnode mesh radios (LCS) -->
++            <a target="_blank" href="https://lcs.network" class="group flex bg-white dark:bg-zinc-800 p-2 rounded shadow hover:bg-gray-50 dark:hover:bg-zinc-700">
++                <div class="mr-2">
++                    <div class="flex items-center justify-center size-14 rounded shadow text-white bg-gradient-to-br from-[#1e5aa0] to-[#123a6b]">
++                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-8">
++                            <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z" />
++                        </svg>
++                    </div>
++                </div>
++                <div class="my-auto mr-auto dark:text-gray-200">
++                    <div class="font-bold">Purchase RNode Mesh Radios</div>
++                    <div class="text-sm">lcs.network</div>
++                </div>
++                <div class="my-auto text-gray-400 group-hover:text-gray-500">
++                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6">
++                        <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"></path>
++                    </svg>
++                </div>
++            </a>
++
+         </div>
+     </div>
+ </template>
