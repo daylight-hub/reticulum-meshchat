@@ -6,7 +6,7 @@
             <div class="bg-white dark:bg-zinc-800 rounded shadow">
                 <div class="flex border-b border-gray-300 dark:border-zinc-700 text-gray-700 dark:text-gray-200 p-2 font-semibold">Tools</div>
                 <div class="dark:divide-zinc-700 text-gray-900 dark:text-gray-100 p-2">
-                    A collection of useful tools bundled with MeshChat
+                    A collection of useful tools bundled with LCS MeshChat
                 </div>
             </div>
 

@@ -1,21 +1,44 @@
+diff --git a/LICENSE b/LICENSE
+index 77c5499..8e31b61 100644
+--- a/LICENSE
++++ b/LICENSE
+@@ -1,3 +1,31 @@
++LCS MeshChat — a Liberty Communication Systems, Inc. distribution
++of Reticulum MeshChat.
++
++================================================================================
++Modifications, branding, and additions
++================================================================================
++
++Copyright (c) 2025 Liberty Communication Systems, Inc. All rights reserved.
++
++This distribution ("LCS MeshChat") is a modified version of Reticulum MeshChat.
++All modifications, additions, branding, artwork, logos, names, and trademarks of
++Liberty Communication Systems, Inc. ("LCS"), including but not limited to the
++"LCS" and "Liberty Communication Systems" names and logos and the lcs.network
++identity, are the exclusive property of Liberty Communication Systems, Inc. and
++are protected by applicable copyright and trademark law.
++
++The LCS name, logos, and trademarks are NOT licensed under the MIT License below
++and may not be used to endorse, promote, or brand derivative works without the
++prior written permission of Liberty Communication Systems, Inc. Removal or
++alteration of LCS branding does not grant any rights to the LCS marks.
++
++The underlying Reticulum MeshChat software remains licensed under the MIT License
++reproduced below, and that notice is retained as required by its terms.
++
++================================================================================
++Reticulum MeshChat — MIT License (retained as required)
++================================================================================
++
+ MIT License
+ 
+ Copyright (c) 2024 Liam Cottle
 diff --git a/meshchat.py b/meshchat.py
-index a6f77ee..83e5fd4 100644
+index 97cb2c3..7847f2b 100644
 --- a/meshchat.py
 +++ b/meshchat.py
-@@ -121,6 +121,12 @@ class ReticulumMeshChat:
-         self.reticulum = RNS.Reticulum(reticulum_config_dir)
-         self.identity = identity
- 
-+        # on desktop (frozen) builds only, ensure LCS default interfaces exist in the reticulum config
-+        try:
-+            self.ensure_lcs_default_interfaces()
-+        except Exception as e:
-+            RNS.log(f"Could not ensure LCS default interfaces: {e}", RNS.LOG_WARNING)
-+
-         # init lxmf router
-         self.message_router = LXMF.LXMRouter(identity=self.identity, storagepath=lxmf_router_path)
-         self.message_router.PROCESSING_INTERVAL = 1
-@@ -173,6 +179,61 @@ class ReticulumMeshChat:
+@@ -173,6 +173,54 @@ class ReticulumMeshChat:
          thread.daemon = True
          thread.start()
  
@@ -67,20 +90,49 @@ index a6f77ee..83e5fd4 100644
 +
 +        return added
 +
-+    # on desktop (frozen) builds, auto-add the LCS preset interfaces on startup.
-+    # does nothing on web/docker builds (the header button is used there instead).
-+    def ensure_lcs_default_interfaces(self):
-+        if not getattr(sys, "frozen", False):
-+            return
-+        self.add_lcs_preset_interfaces()
-+
      # init telephone
      def init_telephone(self):
          self.telephone = Telephone(identity=self.identity)
-@@ -717,6 +778,25 @@ class ReticulumMeshChat:
+@@ -234,6 +282,14 @@ class ReticulumMeshChat:
+             package_json = json.load(f)
+             return package_json["version"]
+ 
++    # LXST does not expose __version__, so read it from the installed package metadata
++    def get_lxst_version(self) -> str:
++        try:
++            from importlib.metadata import version
++            return version("lxst")
++        except Exception:
++            return "unknown"
++
+     # automatically announces based on user config
+     async def announce_loop(self):
+         while True:
+@@ -717,6 +773,46 @@ class ReticulumMeshChat:
                  "message": "Interface is now disabled",
              })
  
++        # restart the app (docker builds). exits the process so docker's
++        # "restart: unless-stopped" policy brings the container back up. this avoids
++        # mounting the docker socket into the container, which would be a security risk.
++        @routes.post("/api/v1/app/restart")
++        async def index(request):
++            # only meaningful inside docker (where the restart policy relaunches us)
++            if not os.path.exists("/.dockerenv"):
++                return web.json_response({
++                    "message": "Restart is only available in the Docker build.",
++                }, status=400)
++
++            async def do_exit():
++                await asyncio.sleep(1)
++                # hard-exit; docker restart policy will relaunch the container
++                os._exit(0)
++
++            asyncio.ensure_future(do_exit())
++            return web.json_response({
++                "message": "Restarting MeshChat... the app will be back in a few seconds.",
++            })
++
 +        # add LCS preset interfaces (public TCP backbone + RNode LoRa template)
 +        @routes.post("/api/v1/reticulum/interfaces/add-lcs-presets")
 +        async def index(request):
@@ -103,43 +155,78 @@ index a6f77ee..83e5fd4 100644
          # delete reticulum interface
          @routes.post("/api/v1/reticulum/interfaces/delete")
          async def index(request):
-@@ -2038,6 +2118,10 @@ class ReticulumMeshChat:
-             if "transport_id" in interface_stats:
-                 interface_stats["transport_id"] = interface_stats["transport_id"].hex()
+@@ -1258,6 +1354,7 @@ class ReticulumMeshChat:
+                     "version": self.get_app_version(),
+                     "lxmf_version": LXMF.__version__,
+                     "rns_version": RNS.__version__,
++                    "lxst_version": self.get_lxst_version(),
+                     "python_version": platform.python_version(),
+                     "storage_path": self.storage_path,
+                     "database_path": self.database_path,
+@@ -1265,6 +1362,7 @@ class ReticulumMeshChat:
+                     "reticulum_config_path": self.reticulum.configpath,
+                     "is_connected_to_shared_instance": self.reticulum.is_connected_to_shared_instance,
+                     "is_transport_enabled": self.reticulum.transport_enabled(),
++                    "is_docker": os.path.exists("/.dockerenv"),
+                 },
+             })
  
-+            # ensure network_id is hex as json_response can't serialize bytes
-+            if "network_id" in interface_stats and interface_stats["network_id"] is not None:
-+                interface_stats["network_id"] = interface_stats["network_id"].hex()
-+
-             # ensure probe_responder is hex as json_response can't serialize bytes
-             if "probe_responder" in interface_stats and interface_stats["probe_responder"] is not None:
-                 interface_stats["probe_responder"] = interface_stats["probe_responder"].hex()
-diff --git a/requirements.txt b/requirements.txt
-index 5d45d74..294c0c2 100644
---- a/requirements.txt
-+++ b/requirements.txt
-@@ -1,8 +1,8 @@
--aiohttp>=3.12.14
-+aiohttp>=3.13.3
- cx_freeze>=8.5.0
--lxmf>=0.9.2
--lxst>=0.4.4
--peewee>=3.18.1
-+lxmf>=1.0.1
-+lxst>=0.4.8
-+peewee>=3.18.1,<4.0.0
- pycparser==2.14
--rns>=1.0.2
--websockets>=14.2
-+rns>=1.3.7
-+websockets>=16.0
+diff --git a/package-lock.json b/package-lock.json
+index 2ebcf4d..c6e4f33 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -1,12 +1,12 @@
+ {
+   "name": "reticulum-meshchat",
+-  "version": "2.4.0",
++  "version": "1.0.0",
+   "lockfileVersion": 3,
+   "requires": true,
+   "packages": {
+     "": {
+       "name": "reticulum-meshchat",
+-      "version": "2.4.0",
++      "version": "1.0.0",
+       "license": "MIT",
+       "dependencies": {
+         "@mdi/js": "^7.4.47",
+diff --git a/package.json b/package.json
+index 87ac588..5840aa7 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "reticulum-meshchat",
+-  "version": "2.4.0",
++  "version": "1.0.0",
+   "description": "",
+   "main": "electron/main.js",
+   "scripts": {
+diff --git a/src/frontend/call.html b/src/frontend/call.html
+index 55f6c28..aa307c3 100644
+--- a/src/frontend/call.html
++++ b/src/frontend/call.html
+@@ -5,7 +5,7 @@
+     <meta http-equiv="X-UA-Compatible" content="IE=edge">
+     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+     <link rel="icon" type="image/png" href="favicons/favicon-512x512.png"/>
+-    <title>Phone | Reticulum MeshChat</title>
++    <title>Phone | LCS MeshChat</title>
+ 
+     <!-- codec2 -->
+     <script src="assets/js/codec2-emscripten/c2enc.js"></script>
 diff --git a/src/frontend/components/App.vue b/src/frontend/components/App.vue
-index 71d727e..86c9a5b 100644
+index 71d727e..1166f9b 100644
 --- a/src/frontend/components/App.vue
 +++ b/src/frontend/components/App.vue
-@@ -4,17 +4,60 @@
+@@ -2,19 +2,64 @@
+     <div :class="{'dark': config?.theme === 'dark'}" class="h-screen w-full flex flex-col">
+ 
          <!-- header -->
-         <div class="flex bg-white dark:bg-zinc-950 p-2 border-gray-300 dark:border-zinc-900 border-b min-h-16">
+-        <div class="flex bg-white dark:bg-zinc-950 p-2 border-gray-300 dark:border-zinc-900 border-b min-h-16">
++        <div class="flex bg-white dark:bg-zinc-950 p-2 border-gray-300 dark:border-zinc-900 border-b min-h-16 relative">
++            <!-- LCS: thin brand accent line along the bottom edge -->
++            <div class="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-[#1e5aa0] via-[#c9a227] to-[#123a6b] opacity-80"></div>
              <div class="flex w-full">
 -                <div class="hidden sm:flex my-auto w-12 h-12 mr-2">
 -                    <img class="w-12 h-12" src="/assets/images/logo-chat-bubble.png" />
@@ -166,7 +253,7 @@ index 71d727e..86c9a5b 100644
                  <div class="flex my-auto ml-auto mr-0 sm:mr-2 space-x-1 sm:space-x-2">
 +
 +                    <!-- LCS: Back button (web/docker build only) -->
-+                    <button v-if="isWeb" @click="goBack" type="button" title="Go back" class="rounded-full group">
++                    <button @click="goBack" type="button" title="Go back" class="rounded-full group">
 +                        <span class="flex items-center text-white bg-gradient-to-br from-[#1e5aa0] to-[#123a6b] hover:from-[#2f6fc0] hover:to-[#1a4d8f] shadow-sm hover:shadow-md transition-all duration-150 active:scale-95 px-2 py-1 rounded-full">
 +                            <span>
 +                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" class="w-6 h-6">
@@ -177,8 +264,8 @@ index 71d727e..86c9a5b 100644
 +                        </span>
 +                    </button>
 +
-+                    <!-- LCS: Add Preset Interfaces button (web/docker build only) -->
-+                    <button v-if="isWeb" @click="addLcsPresets" type="button" title="Add LCS Preset Interfaces" class="rounded-full group">
++                    <!-- LCS: Add Preset Interfaces button (all builds) -->
++                    <button @click="addLcsPresets" type="button" title="Add LCS Preset Interfaces" class="rounded-full group">
 +                        <span class="flex items-center text-white bg-gradient-to-br from-[#178a5a] to-[#0d5e3c] hover:from-[#1fa96e] hover:to-[#127a4f] shadow-sm hover:shadow-md transition-all duration-150 active:scale-95 px-2 py-1 rounded-full">
 +                            <span :class="{ 'animate-spin': isAddingLcsPresets }">
 +                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" class="w-6 h-6">
@@ -189,8 +276,8 @@ index 71d727e..86c9a5b 100644
 +                        </span>
 +                    </button>
 +
-+                    <!-- LCS: Restart button (web/docker build only) -->
-+                    <button v-if="isWeb" @click="restartApp" type="button" title="Restart MeshChat" class="rounded-full group">
++                    <!-- LCS: Restart button (docker build only) -->
++                    <button v-if="isDocker" @click="restartApp" type="button" title="Restart MeshChat" class="rounded-full group">
 +                        <span class="flex items-center text-white bg-gradient-to-br from-[#c9a227] to-[#8a6d12] hover:from-[#e0b73a] hover:to-[#a8871a] shadow-sm hover:shadow-md transition-all duration-150 active:scale-95 px-2 py-1 rounded-full">
 +                            <span :class="{ 'animate-spin': isRestarting }">
 +                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" class="w-6 h-6">
@@ -204,7 +291,7 @@ index 71d727e..86c9a5b 100644
                      <button @click="syncPropagationNode" type="button" class="rounded-full">
                          <span class="flex text-gray-700 dark:text-white bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-600 px-2 py-1 rounded-full">
                              <span :class="{ 'animate-spin': isSyncingPropagationNode }">
-@@ -138,6 +181,16 @@
+@@ -138,6 +183,16 @@
                                  </SidebarLink>
                              </li>
  
@@ -221,7 +308,7 @@ index 71d727e..86c9a5b 100644
                          </ul>
                      </div>
  
-@@ -344,6 +397,7 @@ import GlobalState from "../js/GlobalState";
+@@ -344,6 +399,7 @@ import GlobalState from "../js/GlobalState";
  import Utils from "../js/Utils";
  import GlobalEmitter from "../js/GlobalEmitter";
  import NotificationUtils from "../js/NotificationUtils";
@@ -229,16 +316,25 @@ index 71d727e..86c9a5b 100644
  import LxmfUserIcon from "./LxmfUserIcon.vue";
  
  export default {
-@@ -354,6 +408,8 @@ export default {
+@@ -354,6 +410,9 @@ export default {
      },
      data() {
          return {
 +            isRestarting: false,
 +            isAddingLcsPresets: false,
++            isDocker: false,
  
              reloadInterval: null,
  
-@@ -623,6 +679,46 @@ export default {
+@@ -432,6 +491,7 @@ export default {
+             try {
+                 const response = await window.axios.get(`/api/v1/app/info`);
+                 this.appInfo = response.data.app_info;
++                this.isDocker = response.data.app_info?.is_docker === true;
+             } catch(e) {
+                 // do nothing if failed to load app info
+                 console.log(e);
+@@ -623,6 +683,61 @@ export default {
                  // ignore error
              }
          },
@@ -272,20 +368,35 @@ index 71d727e..86c9a5b 100644
 +                this.$router.push({ name: "messages" }).catch(() => {});
 +            }
 +        },
-+        restartApp() {
-+            // restarts the MeshChat web app: reloads the page, which re-establishes
-+            // the websocket connection and re-fetches all state from the backend.
-+            // (this does NOT restart the docker container - that is intentionally
-+            // not exposed to the browser for security reasons.)
++        async restartApp() {
++            // restarts the docker container's app process. the backend exits and docker's
++            // "restart: unless-stopped" policy relaunches the container. we do NOT run
++            // docker commands from the browser (that would require mounting the docker
++            // socket into the container, a security risk).
++            if (this.isRestarting) {
++                return;
++            }
++            const confirmed = await DialogUtils.confirm("Restart MeshChat?\n\nThe app will go offline for a few seconds while the container restarts, then reload automatically.");
++            if (!confirmed) {
++                return;
++            }
 +            this.isRestarting = true;
-+            setTimeout(() => {
-+                window.location.reload();
-+            }, 400);
++            try {
++                await window.axios.post("/api/v1/app/restart");
++                // give the container a moment to exit + relaunch, then reload the page
++                setTimeout(() => {
++                    window.location.reload();
++                }, 6000);
++            } catch (e) {
++                this.isRestarting = false;
++                const message = e?.response?.data?.message ?? "Failed to restart MeshChat.";
++                await DialogUtils.alert(message);
++            }
 +        },
          onAppNameClick() {
              // user may be on mobile, and is unable to scroll back to sidebar, so let them tap app name to do it
              this.$refs["middle"].scrollTo({
-@@ -633,6 +729,11 @@ export default {
+@@ -633,6 +748,11 @@ export default {
          },
      },
      computed: {
@@ -297,10 +408,69 @@ index 71d727e..86c9a5b 100644
          Utils() {
              return Utils;
          },
+diff --git a/src/frontend/components/about/AboutPage.vue b/src/frontend/components/about/AboutPage.vue
+index 1a5bc36..7c9c31e 100644
+--- a/src/frontend/components/about/AboutPage.vue
++++ b/src/frontend/components/about/AboutPage.vue
+@@ -12,7 +12,7 @@
+                         <div class="mr-auto">
+                             <div>Versions</div>
+                             <div class="text-sm text-gray-700 dark:text-zinc-400">
+-                                MeshChat v{{ appInfo.version }} • RNS v{{ appInfo.rns_version }} • LXMF v{{ appInfo.lxmf_version }} • Python v{{ appInfo.python_version }}
++                                LCS MeshChat v{{ appInfo.version }} • RNS v{{ appInfo.rns_version }} • LXMF v{{ appInfo.lxmf_version }} • LXST v{{ appInfo.lxst_version }} • Python v{{ appInfo.python_version }}
+                             </div>
+                         </div>
+                         <div class="hidden sm:block mx-2 my-auto">
+diff --git a/src/frontend/components/interfaces/InterfacesPage.vue b/src/frontend/components/interfaces/InterfacesPage.vue
+index ccd4f8c..7203af8 100644
+--- a/src/frontend/components/interfaces/InterfacesPage.vue
++++ b/src/frontend/components/interfaces/InterfacesPage.vue
+@@ -9,7 +9,7 @@
+                         <path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" />
+                     </svg>
+                 </div>
+-                <div class="ml-2 my-auto">Reticulum MeshChat must be restarted for any interface changes to take effect.</div>
++                <div class="ml-2 my-auto">Reticulum MeshChat LCS must be restarted for any interface changes to take effect.</div>
+                 <button v-if="isElectron" 
+                     @click="relaunch" 
+                     type="button" 
+diff --git a/src/frontend/components/settings/SettingsPage.vue b/src/frontend/components/settings/SettingsPage.vue
+index 5b21634..5606125 100644
+--- a/src/frontend/components/settings/SettingsPage.vue
++++ b/src/frontend/components/settings/SettingsPage.vue
+@@ -31,8 +31,8 @@
+                             </div>
+                             <label class="ml-2 text-sm font-medium text-gray-900 dark:text-gray-100">Enable Transport Mode</label>
+                         </div>
+-                        <div class="text-sm text-gray-700 dark:text-gray-300">When enabled, MeshChat will route traffic for other peers, respond to path requests and pass announces over your interfaces.</div>
+-                        <div class="text-sm text-gray-700 dark:text-gray-300">Changing this setting requires you to restart MeshChat.</div>
++                        <div class="text-sm text-gray-700 dark:text-gray-300">When enabled, LCS MeshChat will route traffic for other peers, respond to path requests and pass announces over your interfaces.</div>
++                        <div class="text-sm text-gray-700 dark:text-gray-300">Changing this setting requires you to restart LCS MeshChat.</div>
+                     </div>
+ 
+                 </div>
+@@ -125,7 +125,7 @@
+                             </div>
+                             <label class="ml-2 text-sm font-medium text-gray-900 dark:text-gray-100">Local Propagation Node</label>
+                         </div>
+-                        <div class="text-sm text-gray-700 dark:text-gray-300">When enabled, MeshChat will run a Propagation Node and announce it with the following address for other clients to use.</div>
++                        <div class="text-sm text-gray-700 dark:text-gray-300">When enabled, LCS MeshChat will run a Propagation Node and announce it with the following address for other clients to use.</div>
+                         <div class="flex">
+                             <input disabled v-model="config.lxmf_local_propagation_node_address_hash" type="text" class="bg-gray-200 dark:bg-zinc-800 border border-gray-300 dark:border-zinc-600 text-gray-900 dark:text-gray-100 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 dark:focus:ring-blue-600 dark:focus:border-blue-600 block w-full p-2.5">
+                         </div>
 diff --git a/src/frontend/components/tools/ToolsPage.vue b/src/frontend/components/tools/ToolsPage.vue
-index ee47e82..56c8147 100644
+index ee47e82..e6403cb 100644
 --- a/src/frontend/components/tools/ToolsPage.vue
 +++ b/src/frontend/components/tools/ToolsPage.vue
+@@ -6,7 +6,7 @@
+             <div class="bg-white dark:bg-zinc-800 rounded shadow">
+                 <div class="flex border-b border-gray-300 dark:border-zinc-700 text-gray-700 dark:text-gray-200 p-2 font-semibold">Tools</div>
+                 <div class="dark:divide-zinc-700 text-gray-900 dark:text-gray-100 p-2">
+-                    A collection of useful tools bundled with MeshChat
++                    A collection of useful tools bundled with LCS MeshChat
+                 </div>
+             </div>
+ 
 @@ -38,7 +38,7 @@
                      </div>
                  </div>
@@ -337,3 +507,16 @@ index ee47e82..56c8147 100644
          </div>
      </div>
  </template>
+diff --git a/src/frontend/index.html b/src/frontend/index.html
+index 532d7c5..8f5462a 100644
+--- a/src/frontend/index.html
++++ b/src/frontend/index.html
+@@ -7,7 +7,7 @@
+     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+     <link rel="manifest" href="/manifest.json">
+     <link rel="icon" type="image/png" href="favicons/favicon-512x512.png"/>
+-    <title>Reticulum MeshChat</title>
++    <title>LCS MeshChat</title>
+ 
+     <!-- codec2 -->
+     <script src="assets/js/codec2-emscripten/c2enc.js"></script>

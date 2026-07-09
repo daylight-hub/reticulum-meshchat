@@ -227,6 +227,7 @@ class ReticulumMeshChat:
 
         return added
 
+<<<<<<< ours
     # on desktop (frozen) builds, auto-add the LCS preset interfaces on startup.
     # does nothing on web/docker builds (the header button is used there instead).
     def ensure_lcs_default_interfaces(self):
@@ -234,6 +235,8 @@ class ReticulumMeshChat:
             return
         self.add_lcs_preset_interfaces()
 
+=======
+>>>>>>> theirs
     # init telephone
     def init_telephone(self):
         self.telephone = Telephone(identity=self.identity)
@@ -294,6 +297,14 @@ class ReticulumMeshChat:
         with open(get_file_path("package.json")) as f:
             package_json = json.load(f)
             return package_json["version"]
+
+    # LXST does not expose __version__, so read it from the installed package metadata
+    def get_lxst_version(self) -> str:
+        try:
+            from importlib.metadata import version
+            return version("lxst")
+        except Exception:
+            return "unknown"
 
     # automatically announces based on user config
     async def announce_loop(self):
@@ -778,6 +789,30 @@ class ReticulumMeshChat:
                 "message": "Interface is now disabled",
             })
 
+<<<<<<< ours
+=======
+        # restart the app (docker builds). exits the process so docker's
+        # "restart: unless-stopped" policy brings the container back up. this avoids
+        # mounting the docker socket into the container, which would be a security risk.
+        @routes.post("/api/v1/app/restart")
+        async def index(request):
+            # only meaningful inside docker (where the restart policy relaunches us)
+            if not os.path.exists("/.dockerenv"):
+                return web.json_response({
+                    "message": "Restart is only available in the Docker build.",
+                }, status=400)
+
+            async def do_exit():
+                await asyncio.sleep(1)
+                # hard-exit; docker restart policy will relaunch the container
+                os._exit(0)
+
+            asyncio.ensure_future(do_exit())
+            return web.json_response({
+                "message": "Restarting MeshChat... the app will be back in a few seconds.",
+            })
+
+>>>>>>> theirs
         # add LCS preset interfaces (public TCP backbone + RNode LoRa template)
         @routes.post("/api/v1/reticulum/interfaces/add-lcs-presets")
         async def index(request):
@@ -1338,6 +1373,7 @@ class ReticulumMeshChat:
                     "version": self.get_app_version(),
                     "lxmf_version": LXMF.__version__,
                     "rns_version": RNS.__version__,
+                    "lxst_version": self.get_lxst_version(),
                     "python_version": platform.python_version(),
                     "storage_path": self.storage_path,
                     "database_path": self.database_path,
@@ -1345,6 +1381,7 @@ class ReticulumMeshChat:
                     "reticulum_config_path": self.reticulum.configpath,
                     "is_connected_to_shared_instance": self.reticulum.is_connected_to_shared_instance,
                     "is_transport_enabled": self.reticulum.transport_enabled(),
+                    "is_docker": os.path.exists("/.dockerenv"),
                 },
             })
 

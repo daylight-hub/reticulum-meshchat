@@ -1,85 +1,61 @@
-# LCS MeshChat — customization bundle
+# LCS MeshChat — customization bundle (v3)
 
-This bundle contains all the LCS customizations to apply on top of your
-`feature/lxst` branch (after you've merged upstream v2.4.0 per the earlier
-`UPDATE_LXST_FROM_UPSTREAM.md` steps).
+Apply on top of your feature/lxst branch (after the upstream v2.4.0 merge).
+Verified: the patch applies cleanly with both `git apply` and `git apply --3way`.
 
-## What's included
+## Contents
 
-- **lcs-meshchat-source.patch** — code changes to 4 files:
-  - `meshchat.py` — LCS preset-interface method + `/api/v1/reticulum/interfaces/add-lcs-presets`
-    endpoint + desktop (`sys.frozen`) auto-add of the interfaces
-  - `requirements.txt` — merged dependency versions (rns 1.3.7, lxmf 1.0.1,
-    lxst 0.4.8, peewee<4.0.0, etc.)
-  - `src/frontend/components/App.vue` — LCS branding/logo, Back / Restart /
-    "Add LCS Interfaces" buttons (web-only), sidebar lcs.network link
-  - `src/frontend/components/tools/ToolsPage.vue` — "LCS RNode Flasher" label +
-    "Purchase RNode Mesh Radios" tile
-- **lcs-assets/** — binary files (can't live in a text patch):
-  - `images/lcs-logo.png` → copy to `src/frontend/public/assets/images/lcs-logo.png`
-  - `rnode-flasher/index.html` → replace `src/frontend/public/rnode-flasher/index.html`
+### lcs-meshchat-source.patch  (10 text files)
+- LICENSE          -> LCS ownership of additions/branding/marks + retained MIT
+- package.json / package-lock.json -> version 2.4.0 -> 1.0.0
+- meshchat.py      -> add-lcs-presets endpoint, docker-safe /app/restart, is_docker flag
+- App.vue          -> branding, accent bar, Back + Add LCS Interfaces (all builds),
+                      Restart (docker only), sidebar lcs.network link
+- InterfacesPage / SettingsPage / ToolsPage / index.html / call.html
+                   -> "MeshChat" -> "LCS MeshChat" rename
 
-## Apply it
+### lcs-assets/  (binary files — paths mirror the repo)
+All logos/favicons/icons regenerated from your LCS logo at correct sizes:
+- src/frontend/public/assets/images/  lcs-logo.png, logo.png,
+                                      logo-chat-bubble.png, reticulum_logo_512.png
+- src/frontend/public/favicons/       favicon-512x512.png
+- src/frontend/public/rnode-flasher/  reticulum_logo_512.png, index.html (LCS flasher)
+- logo/                               logo.png, logo-chat-bubble.png, icon.ico (Windows app icon)
 
-From the root of your repo, on your `feature/lxst` branch:
+## Apply (repo root, on feature/lxst)
 
-```sh
-# 1. apply the code patch
-git apply --check lcs-meshchat-source.patch   # dry-run; should print nothing
-git apply lcs-meshchat-source.patch
+    git apply --3way lcs-meshchat-source.patch
 
-# 2. drop in the binary assets
-mkdir -p src/frontend/public/assets/images
-cp /path/to/lcs-assets/images/lcs-logo.png            src/frontend/public/assets/images/lcs-logo.png
-cp /path/to/lcs-assets/rnode-flasher/index.html       src/frontend/public/rnode-flasher/index.html
+    # copy ALL binary assets in one shot (paths already match the repo layout)
+    cp -r lcs-assets/. .          # Linux/Mac
+    # Windows PowerShell:
+    #   Copy-Item -Path lcs-assets\* -Destination . -Recurse -Force
 
-# 3. (optional) remove the now-unused old flasher libraries to slim the image
-#    the new flasher is self-contained, so its old js/ folder is dead weight
-# rm -rf src/frontend/public/rnode-flasher/js
+    git add -A
+    git commit -m "LCS branding, logos, v1.0.0, license, buttons, presets, restart, flasher"
+    git push origin feature/lxst
 
-# 4. commit + push
-git add -A
-git commit -m "LCS branding, header buttons, preset interfaces, flasher, lcs.network links"
-git push origin feature/lxst
-```
-
-If `git apply` complains about context (e.g. if your merged tree differs
-slightly), use a 3-way apply which is more forgiving:
-```sh
-git apply --3way lcs-meshchat-source.patch
-```
+On Windows PowerShell run commands one per line (no &&).
 
 ## Build & deploy
 
-Trigger your GitHub Actions build (Actions → Build and Release → Run workflow),
-then on the Pi:
-```sh
-cd /opt/reticulum-meshchat
-docker compose pull
-docker compose up -d
-```
+Trigger GitHub Actions -> build. Then on the Pi:
+    cd /opt/reticulum-meshchat
+    docker compose pull
+    docker compose up -d
 
-## What you'll see
+## Notes
+- Version now shows 1.0.0 everywhere (About, API, built artifact filenames), since
+  get_app_version() reads package.json.
+- LICENSE: Liam Cottle's MIT notice is RETAINED (legally required for MIT derivatives).
+  Your LCS additions/branding/marks are declared LCS property and NOT MIT-licensed.
+  This is the correct, enforceable way to protect an MIT fork — you cannot remove the
+  upstream MIT notice, but everything you added is protected.
+- Restart button (docker only) exits the app process; docker restart:unless-stopped
+  relaunches it. It does NOT run `docker compose restart` (that needs the docker
+  socket = root control of the host from an unauthenticated UI = unsafe).
+- Add LCS Interfaces button: all builds. Idempotent, non-destructive, needs a restart.
 
-- Header: LCS logo + gradient "LCS MeshChat" wordmark; **Back**, **Add LCS
-  Interfaces**, and **Restart** buttons (web/docker build only — hidden in the
-  desktop .exe/.dmg/AppImage via the electron check)
-- Sidebar: an always-visible **"Buy RNode Radios · lcs.network"** link
-- Tools page: **LCS RNode Flasher** + **Purchase RNode Mesh Radios** (lcs.network)
-- Interfaces: the **Add LCS Interfaces** button adds
-  `TCPClient public.lcs.network:1776` (enabled) and an `RNode LoRa Interface`
-  (disabled template with your LoRa params). Desktop builds add these
-  automatically on first launch.
-
-## Notes / caveats
-
-- Interfaces require a **MeshChat restart** to take effect (inherent to RNS).
-- `public.lcs.network:1776` must be a reachable RNS TCP server or clients will
-  log connection retries — that's your infrastructure, not the code.
-- The **Restart** button reloads the web app; it does NOT restart the Docker
-  container (that would require exposing the Docker socket — a security risk).
-- The flasher and buttons were verified to build cleanly, but the Web Serial
-  flash flow and live button→backend calls couldn't be hardware-tested in the
-  build environment — worth a quick click-test on your first build.
-- License: MeshChat's MIT `LICENSE` is preserved; your flasher's BSD-3-Clause
-  header + third-party attributions are intact. You're clear to distribute.
+## Verify on first build (couldn't test in build env)
+- Restart endpoint (needs live container), flasher Web Serial (needs hardware),
+  live button->backend calls, logos rendering. All code compiles; frontend builds clean.

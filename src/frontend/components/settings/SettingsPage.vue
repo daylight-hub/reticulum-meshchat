@@ -31,8 +31,8 @@
                             </div>
                             <label class="ml-2 text-sm font-medium text-gray-900 dark:text-gray-100">Enable Transport Mode</label>
                         </div>
-                        <div class="text-sm text-gray-700 dark:text-gray-300">When enabled, MeshChat will route traffic for other peers, respond to path requests and pass announces over your interfaces.</div>
-                        <div class="text-sm text-gray-700 dark:text-gray-300">Changing this setting requires you to restart MeshChat.</div>
+                        <div class="text-sm text-gray-700 dark:text-gray-300">When enabled, LCS MeshChat will route traffic for other peers, respond to path requests and pass announces over your interfaces.</div>
+                        <div class="text-sm text-gray-700 dark:text-gray-300">Changing this setting requires you to restart LCS MeshChat.</div>
                     </div>
 
                 </div>
@@ -125,7 +125,7 @@
                             </div>
                             <label class="ml-2 text-sm font-medium text-gray-900 dark:text-gray-100">Local Propagation Node</label>
                         </div>
-                        <div class="text-sm text-gray-700 dark:text-gray-300">When enabled, MeshChat will run a Propagation Node and announce it with the following address for other clients to use.</div>
+                        <div class="text-sm text-gray-700 dark:text-gray-300">When enabled, LCS MeshChat will run a Propagation Node and announce it with the following address for other clients to use.</div>
                         <div class="flex">
                             <input disabled v-model="config.lxmf_local_propagation_node_address_hash" type="text" class="bg-gray-200 dark:bg-zinc-800 border border-gray-300 dark:border-zinc-600 text-gray-900 dark:text-gray-100 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 dark:focus:ring-blue-600 dark:focus:border-blue-600 block w-full p-2.5">
                         </div>

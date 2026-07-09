@@ -2,7 +2,9 @@
     <div :class="{'dark': config?.theme === 'dark'}" class="h-screen w-full flex flex-col">
 
         <!-- header -->
-        <div class="flex bg-white dark:bg-zinc-950 p-2 border-gray-300 dark:border-zinc-900 border-b min-h-16">
+        <div class="flex bg-white dark:bg-zinc-950 p-2 border-gray-300 dark:border-zinc-900 border-b min-h-16 relative">
+            <!-- LCS: thin brand accent line along the bottom edge -->
+            <div class="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-[#1e5aa0] via-[#c9a227] to-[#123a6b] opacity-80"></div>
             <div class="flex w-full">
                 <div class="hidden sm:flex my-auto mr-3">
                     <div class="w-12 h-12 rounded-full ring-2 ring-[#1e5aa0]/70 shadow-md p-0.5 bg-white flex items-center justify-center">
@@ -23,7 +25,11 @@
                 <div class="flex my-auto ml-auto mr-0 sm:mr-2 space-x-1 sm:space-x-2">
 
                     <!-- LCS: Back button (web/docker build only) -->
+<<<<<<< ours
                     <button v-if="isWeb" @click="goBack" type="button" title="Go back" class="rounded-full group">
+=======
+                    <button @click="goBack" type="button" title="Go back" class="rounded-full group">
+>>>>>>> theirs
                         <span class="flex items-center text-white bg-gradient-to-br from-[#1e5aa0] to-[#123a6b] hover:from-[#2f6fc0] hover:to-[#1a4d8f] shadow-sm hover:shadow-md transition-all duration-150 active:scale-95 px-2 py-1 rounded-full">
                             <span>
                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" class="w-6 h-6">
@@ -34,8 +40,13 @@
                         </span>
                     </button>
 
+<<<<<<< ours
                     <!-- LCS: Add Preset Interfaces button (web/docker build only) -->
                     <button v-if="isWeb" @click="addLcsPresets" type="button" title="Add LCS Preset Interfaces" class="rounded-full group">
+=======
+                    <!-- LCS: Add Preset Interfaces button (all builds) -->
+                    <button @click="addLcsPresets" type="button" title="Add LCS Preset Interfaces" class="rounded-full group">
+>>>>>>> theirs
                         <span class="flex items-center text-white bg-gradient-to-br from-[#178a5a] to-[#0d5e3c] hover:from-[#1fa96e] hover:to-[#127a4f] shadow-sm hover:shadow-md transition-all duration-150 active:scale-95 px-2 py-1 rounded-full">
                             <span :class="{ 'animate-spin': isAddingLcsPresets }">
                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" class="w-6 h-6">
@@ -46,8 +57,13 @@
                         </span>
                     </button>
 
+<<<<<<< ours
                     <!-- LCS: Restart button (web/docker build only) -->
                     <button v-if="isWeb" @click="restartApp" type="button" title="Restart MeshChat" class="rounded-full group">
+=======
+                    <!-- LCS: Restart button (docker build only) -->
+                    <button v-if="isDocker" @click="restartApp" type="button" title="Restart MeshChat" class="rounded-full group">
+>>>>>>> theirs
                         <span class="flex items-center text-white bg-gradient-to-br from-[#c9a227] to-[#8a6d12] hover:from-[#e0b73a] hover:to-[#a8871a] shadow-sm hover:shadow-md transition-all duration-150 active:scale-95 px-2 py-1 rounded-full">
                             <span :class="{ 'animate-spin': isRestarting }">
                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" class="w-6 h-6">
@@ -410,6 +426,10 @@ export default {
         return {
             isRestarting: false,
             isAddingLcsPresets: false,
+<<<<<<< ours
+=======
+            isDocker: false,
+>>>>>>> theirs
 
             reloadInterval: null,
 
@@ -488,6 +508,7 @@ export default {
             try {
                 const response = await window.axios.get(`/api/v1/app/info`);
                 this.appInfo = response.data.app_info;
+                this.isDocker = response.data.app_info?.is_docker === true;
             } catch(e) {
                 // do nothing if failed to load app info
                 console.log(e);
@@ -709,6 +730,7 @@ export default {
                 this.$router.push({ name: "messages" }).catch(() => {});
             }
         },
+<<<<<<< ours
         restartApp() {
             // restarts the MeshChat web app: reloads the page, which re-establishes
             // the websocket connection and re-fetches all state from the backend.
@@ -718,6 +740,32 @@ export default {
             setTimeout(() => {
                 window.location.reload();
             }, 400);
+=======
+        async restartApp() {
+            // restarts the docker container's app process. the backend exits and docker's
+            // "restart: unless-stopped" policy relaunches the container. we do NOT run
+            // docker commands from the browser (that would require mounting the docker
+            // socket into the container, a security risk).
+            if (this.isRestarting) {
+                return;
+            }
+            const confirmed = await DialogUtils.confirm("Restart MeshChat?\n\nThe app will go offline for a few seconds while the container restarts, then reload automatically.");
+            if (!confirmed) {
+                return;
+            }
+            this.isRestarting = true;
+            try {
+                await window.axios.post("/api/v1/app/restart");
+                // give the container a moment to exit + relaunch, then reload the page
+                setTimeout(() => {
+                    window.location.reload();
+                }, 6000);
+            } catch (e) {
+                this.isRestarting = false;
+                const message = e?.response?.data?.message ?? "Failed to restart MeshChat.";
+                await DialogUtils.alert(message);
+            }
+>>>>>>> theirs
         },
         onAppNameClick() {
             // user may be on mobile, and is unable to scroll back to sidebar, so let them tap app name to do it
