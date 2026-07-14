@@ -297,6 +297,7 @@ export default {
     },
     data() {
         return {
+            ringtone: null,
 
             config: null,
             myIdentityHash: null,
@@ -327,7 +328,7 @@ export default {
         this.getTelephoneStatus();
 
         // update telephone status every second
-        setInterval(() => {
+        this.statusInterval = setInterval(() => {
             this.getTelephoneStatus();
         }, 1000);
 
@@ -341,7 +342,69 @@ export default {
         }
 
     },
+    beforeUnmount: function() {
+        // stop the status polling and any active ringtone when leaving the page
+        if(this.statusInterval){
+            clearInterval(this.statusInterval);
+        }
+        this.stopRingtone();
+    },
     methods: {
+        // LCS: generated ringtone (Web Audio) - no audio file needed.
+        // plays a repeating two-tone ring while an incoming call is ringing.
+        startRingtone() {
+            // already ringing
+            if(this.ringtone && this.ringtone.timer){
+                return;
+            }
+            try {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if(!AudioCtx){
+                    return;
+                }
+                const ctx = this.ringtone?.ctx ?? new AudioCtx();
+                const playBurst = () => {
+                    // classic ring: two short tones, then a pause, on a ~3s cycle
+                    const now = ctx.currentTime;
+                    const gain = ctx.createGain();
+                    gain.connect(ctx.destination);
+                    gain.gain.setValueAtTime(0, now);
+                    const osc = ctx.createOscillator();
+                    osc.type = "sine";
+                    osc.frequency.setValueAtTime(440, now);
+                    osc.frequency.setValueAtTime(480, now + 0.2);
+                    osc.connect(gain);
+                    // envelope: on 0.2s, off 0.1s, on 0.2s
+                    gain.gain.setValueAtTime(0.001, now);
+                    gain.gain.exponentialRampToValueAtTime(0.25, now + 0.02);
+                    gain.gain.setValueAtTime(0.25, now + 0.2);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+                    gain.gain.setValueAtTime(0.001, now + 0.3);
+                    gain.gain.exponentialRampToValueAtTime(0.25, now + 0.32);
+                    gain.gain.setValueAtTime(0.25, now + 0.5);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.52);
+                    osc.start(now);
+                    osc.stop(now + 0.55);
+                };
+                // resume in case the context is suspended (autoplay policy)
+                if(ctx.state === "suspended"){
+                    ctx.resume().catch(() => {});
+                }
+                playBurst();
+                const timer = setInterval(playBurst, 3000);
+                this.ringtone = { ctx, timer };
+            } catch(e) {
+                // ringtone is best-effort; never block the call flow
+                console.error("ringtone error:", e);
+            }
+        },
+        stopRingtone() {
+            if(this.ringtone && this.ringtone.timer){
+                clearInterval(this.ringtone.timer);
+                this.ringtone.timer = null;
+            }
+        },
+
         async initiateCall(destinationHash) {
 
             // do nothing if already initiating call
@@ -491,6 +554,15 @@ export default {
                 this.activeCall = response.data.active_call;
                 this.isMicMuted = response.data.active_call?.is_transmit_muted ?? false;
                 this.isSpeakerMuted = response.data.active_call?.is_receive_muted ?? false;
+
+                // LCS: ring for an incoming call (status 4 = ringing/incoming).
+                // start the ringtone when a call starts ringing, stop it otherwise.
+                const isRinging = !!(this.activeCall && this.activeCall.is_incoming && this.activeCall.status === 4);
+                if(isRinging){
+                    this.startRingtone();
+                } else {
+                    this.stopRingtone();
+                }
 
                 // update audio profile to what is being used in call
                 const audioProfileId = response.data.active_call.audio_profile_id;

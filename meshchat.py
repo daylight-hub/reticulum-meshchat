@@ -198,6 +198,17 @@ class ReticulumMeshChat:
             }
             added.append(tcp_name)
 
+        # LCS local RNode TCP interface (enabled)
+        rnode_tcp_name = "IP RNode"
+        if rnode_tcp_name not in interfaces:
+            interfaces[rnode_tcp_name] = {
+                "type": "TCPClientInterface",
+                "enabled": "yes",
+                "target_host": "rnode.local",
+                "target_port": "4545",
+            }
+            added.append(rnode_tcp_name)
+
         # LCS RNode LoRa template (disabled by default - user must set the serial port)
         rnode_name = "RNode LoRa Interface"
         if rnode_name not in interfaces:

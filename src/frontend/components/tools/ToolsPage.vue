@@ -30,16 +30,18 @@
                 </div>
             </RouterLink>
 
-            <!-- rnode flasher -->
-            <a target="_blank" href="/rnode-flasher/index.html" class="group flex bg-white dark:bg-zinc-800 p-2 rounded shadow hover:bg-gray-50 dark:hover:bg-zinc-700">
+            <!-- transport node console -->
+            <a target="_blank" href="/transport-console/index.html" class="group flex bg-white dark:bg-zinc-800 p-2 rounded shadow hover:bg-gray-50 dark:hover:bg-zinc-700">
                 <div class="mr-2">
-                    <div class="flex bg-gray-300 text-white rounded shadow">
-                        <img src="/rnode-flasher/reticulum_logo_512.png" class="size-14"/>
+                    <div class="flex items-center justify-center size-14 rounded shadow text-white bg-gradient-to-br from-[#1e5aa0] to-[#123a6b]">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-8">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z" />
+                        </svg>
                     </div>
                 </div>
                 <div class="my-auto mr-auto dark:text-gray-200">
-                    <div class="font-bold">LCS RNode Flasher</div>
-                    <div class="text-sm">Flash RNode firmware to supported devices.</div>
+                    <div class="font-bold">Transport Node Console</div>
+                    <div class="text-sm">Configure and monitor RNode transport nodes.</div>
                 </div>
                 <div class="my-auto text-gray-400 group-hover:text-gray-500">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6">

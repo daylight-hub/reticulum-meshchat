@@ -19,7 +19,7 @@
                         Liberty Communication Systems
                     </div>
                     <div class="text-[11px] text-gray-400 dark:text-zinc-500">
-                        built on <a target="_blank" href="https://liamcottle.com" class="text-blue-500 dark:text-blue-400 hover:underline">MeshChat by Liam Cottle</a>
+                        <a target="_blank" href="https://liamcottle.com" class="text-blue-500 dark:text-blue-400 hover:underline">LCS MeshChat powered by Reticulum MeshChat by Liam Cottle</a>
                     </div>
                 </div>
                 <div class="flex my-auto ml-auto mr-0 sm:mr-2 space-x-1 sm:space-x-2">
