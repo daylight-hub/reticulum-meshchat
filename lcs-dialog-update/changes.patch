@@ -1,0 +1,391 @@
+diff --git a/README.md b/README.md
+index 6f25ccc..94f3732 100644
+--- a/README.md
++++ b/README.md
+@@ -1,8 +1,58 @@
+ <p align="center">
+-<a href="https://github.com/liamcottle/reticulum-meshchat"><img src="./logo/logo-chat-bubble.png" width="150"></a>
++<img src="./logo/logo-chat-bubble.png" width="150">
+ </p>
+ 
+-<h2 align="center">Reticulum MeshChat</h2>
++<h2 align="center">LCS MeshChat</h2>
++
++<p align="center">
++A Liberty Communication Systems, Inc. distribution of Reticulum MeshChat.<br/>
++built on MeshChat by Liam Cottle · <a href="https://lcs.network">lcs.network</a>
++</p>
++
++## About this fork
++
++**LCS MeshChat** is Liberty Communication Systems' branded distribution of
++Reticulum MeshChat, with additional features for LCS network deployments. It is
++built on the open-source [Reticulum MeshChat](https://github.com/liamcottle/reticulum-meshchat)
++by Liam Cottle (MIT licensed — see `LICENSE`).
++
++### LCS additions
++
++- **Branding** — LCS logo throughout, "LCS MeshChat" naming, brand accent styling.
++- **Add LCS Interfaces** — a header button (all builds) opens a dialog to add LCS
++  network interfaces to Reticulum. You choose which to add, whether to enable them
++  immediately, and can auto-detect a connected RNode's serial port:
++  - **LCS Gateway Client** — `public.lcs.network:4243` (TCP, gateway mode)
++  - **IP RNode** — `iprnode.local:4545` (TCP, network-attached RNode)
++  - **RNode LoRa** — direct serial LoRa radio (914.875 MHz, SF11), added disabled
++    unless a serial port is provided.
++- **Restart button** (Docker builds only) — restarts the app process; relies on the
++  container's `restart: unless-stopped` policy. Does not require the Docker socket.
++- **Back button** — navigates to the previous page.
++- **Incoming call ringtone** — a generated tone plays while a call is ringing.
++- **Transport Node Console** — replaces the RNode Flasher tile in Tools; a
++  self-contained console for configuring/monitoring RNode transport nodes.
++- **Purchase link** — "Buy RNode Radios · lcs.network" in the sidebar and Tools.
++- **Version** — reports as LCS MeshChat, and the About page shows the LXST version.
++
++### Build & deploy
++
++- **Docker** — GitHub Actions builds a multi-arch image on every push to the `lcs`
++  branch, pushed to `ghcr.io/<owner>/reticulum-meshchat:latest` and `:lcs`.
++- **Desktop apps** (Windows/Mac/Linux) — built on a version tag push, or via the
++  Actions "Run workflow" button with the desktop-build option enabled. All desktop
++  artifacts attach to a single release. Mac builds install `codec2` via Homebrew so
++  the `pycodec2` dependency compiles.
++
++### License
++
++The LCS name, logos, branding, and additions are the property of Liberty
++Communication Systems, Inc. The underlying Reticulum MeshChat remains MIT licensed;
++that notice is retained in `LICENSE` as required.
++
++---
++
++<h2 align="center">Reticulum MeshChat (upstream)</h2>
+ 
+ <p align="center">
+ <a href="https://discord.gg/APQSQZNV7t"><img src="https://img.shields.io/badge/Discord-Liam%20Cottle's%20Discord-%237289DA?style=flat&logo=discord" alt="discord"/></a>
+diff --git a/meshchat.py b/meshchat.py
+index 7f178c4..c232d70 100644
+--- a/meshchat.py
++++ b/meshchat.py
+@@ -177,7 +177,11 @@ class ReticulumMeshChat:
+     # reticulum config using the config object. append-only and idempotent: an interface is
+     # only added if not already present; existing interfaces are never modified. returns the
+     # list of interface names that were added.
+-    def add_lcs_preset_interfaces(self):
++    def add_lcs_preset_interfaces(self, selected=None, enable=True, rnode_host=None, rnode_port=None, rnode_serial_port=None):
++
++        # default: add all three presets
++        if selected is None:
++            selected = ["lcs_gateway", "ip_rnode", "rnode_lora"]
+ 
+         added = []
+ 
+@@ -186,37 +190,39 @@ class ReticulumMeshChat:
+             self.reticulum.config["interfaces"] = {}
+         interfaces = self.reticulum.config["interfaces"]
+ 
+-        # LCS public TCP backbone (enabled)
+-        tcp_name = "TCP Client Interface: public.lcs.network"
+-        if tcp_name not in interfaces:
+-            interfaces[tcp_name] = {
++        # LCS Gateway Client (enabled)
++        gateway_name = "LCS Gateway Client: public.lcs.network"
++        if "lcs_gateway" in selected and gateway_name not in interfaces:
++            interfaces[gateway_name] = {
+                 "type": "TCPClientInterface",
+-                "enabled": "yes",
++                "enabled": "yes" if enable else "no",
+                 "mode": "gateway",
+                 "target_host": "public.lcs.network",
+-                "target_port": "1776",
++                "target_port": "4243",
+             }
+-            added.append(tcp_name)
++            added.append(gateway_name)
+ 
+-        # LCS local RNode TCP interface (enabled)
+-        rnode_tcp_name = "IP RNode"
+-        if rnode_tcp_name not in interfaces:
+-            interfaces[rnode_tcp_name] = {
++        # LCS IP RNode TCP interface
++        iprnode_name = "IP RNode"
++        if "ip_rnode" in selected and iprnode_name not in interfaces:
++            interfaces[iprnode_name] = {
+                 "type": "TCPClientInterface",
+-                "enabled": "yes",
+-                "target_host": "rnode.local",
+-                "target_port": "4545",
++                "enabled": "yes" if enable else "no",
++                "target_host": rnode_host or "iprnode.local",
++                "target_port": rnode_port or "4545",
+             }
+-            added.append(rnode_tcp_name)
++            added.append(iprnode_name)
+ 
+-        # LCS RNode LoRa template (disabled by default - user must set the serial port)
++        # LCS RNode LoRa (serial). enabled only if a port was provided and enable=True,
++        # otherwise added as a disabled template the user completes later.
+         rnode_name = "RNode LoRa Interface"
+-        if rnode_name not in interfaces:
++        if "rnode_lora" in selected and rnode_name not in interfaces:
++            lora_port = rnode_serial_port or ""
+             interfaces[rnode_name] = {
+                 "type": "RNodeInterface",
+                 "mode": "gateway",
+-                "enabled": "no",
+-                "port": "",
++                "enabled": "yes" if (enable and lora_port) else "no",
++                "port": lora_port,
+                 "frequency": "914875000",
+                 "bandwidth": "250000",
+                 "txpower": "22",
+@@ -805,18 +811,35 @@ class ReticulumMeshChat:
+                 "message": "Restarting MeshChat... the app will be back in a few seconds.",
+             })
+ 
+-        # add LCS preset interfaces (public TCP backbone + RNode LoRa template)
++        # add LCS preset interfaces (selection + options come from the dialog)
+         @routes.post("/api/v1/reticulum/interfaces/add-lcs-presets")
+         async def index(request):
+             try:
+-                added = self.add_lcs_preset_interfaces()
++                # accept an optional json body from the dialog; fall back to defaults
++                try:
++                    data = await request.json()
++                except Exception:
++                    data = {}
++                selected = data.get("selected")  # e.g. ["lcs_gateway","ip_rnode"]
++                enable = data.get("enable", True)
++                rnode_host = data.get("rnode_host")
++                rnode_port = data.get("rnode_port")
++                rnode_serial_port = data.get("rnode_serial_port")
++
++                added = self.add_lcs_preset_interfaces(
++                    selected=selected,
++                    enable=enable,
++                    rnode_host=rnode_host,
++                    rnode_port=rnode_port,
++                    rnode_serial_port=rnode_serial_port,
++                )
+                 if len(added) == 0:
+                     return web.json_response({
+-                        "message": "LCS preset interfaces are already present.",
++                        "message": "Those LCS interface(s) are already present (nothing added).",
+                         "added": [],
+                     })
+                 return web.json_response({
+-                    "message": "LCS preset interfaces added. Please restart MeshChat for these changes to take effect.",
++                    "message": "Added: " + ", ".join(added) + ". Please restart MeshChat for the changes to take effect.",
+                     "added": added,
+                 })
+             except Exception as e:
+@@ -824,6 +847,26 @@ class ReticulumMeshChat:
+                     "message": f"Failed to add LCS preset interfaces: {e}",
+                 }, status=500)
+ 
++        # list available serial ports (for the RNode port-finder in the dialog)
++        @routes.get("/api/v1/reticulum/serial-ports")
++        async def index(request):
++            ports = []
++            try:
++                # pyserial ships with pyserial; list_ports enumerates real devices
++                from serial.tools import list_ports
++                for p in list_ports.comports():
++                    ports.append({
++                        "device": p.device,
++                        "description": p.description or "",
++                        "hwid": p.hwid or "",
++                    })
++            except Exception as e:
++                return web.json_response({
++                    "ports": [],
++                    "message": f"Could not enumerate serial ports: {e}",
++                })
++            return web.json_response({"ports": ports})
++
+         # delete reticulum interface
+         @routes.post("/api/v1/reticulum/interfaces/delete")
+         async def index(request):
+diff --git a/src/frontend/components/App.vue b/src/frontend/components/App.vue
+index 0e79d25..b5079ca 100644
+--- a/src/frontend/components/App.vue
++++ b/src/frontend/components/App.vue
+@@ -1,6 +1,89 @@
+ <template>
+     <div :class="{'dark': config?.theme === 'dark'}" class="h-screen w-full flex flex-col">
+ 
++        <!-- LCS: Add Interfaces dialog -->
++        <div v-if="showLcsDialog" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" @click.self="closeLcsDialog">
++            <div class="w-full max-w-md bg-white dark:bg-zinc-900 rounded-xl shadow-2xl overflow-hidden">
++
++                <!-- header with brand accent -->
++                <div class="relative px-5 py-4 bg-gradient-to-r from-[#1e5aa0] to-[#123a6b]">
++                    <div class="text-white font-bold text-lg">Add LCS Interfaces</div>
++                    <div class="text-blue-100 text-xs">Choose which interfaces to add to Reticulum</div>
++                    <div class="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-[#1e5aa0] via-[#c9a227] to-[#123a6b]"></div>
++                </div>
++
++                <div class="p-5 space-y-3">
++
++                    <!-- LCS Gateway -->
++                    <label class="flex items-start gap-3 p-3 rounded-lg border border-gray-200 dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800 cursor-pointer">
++                        <input type="checkbox" v-model="lcsForm.lcs_gateway" class="mt-1" />
++                        <div>
++                            <div class="font-medium text-gray-900 dark:text-zinc-100">LCS Gateway Client</div>
++                            <div class="text-xs text-gray-500 dark:text-zinc-400">public.lcs.network:4243 — connects to the LCS backbone</div>
++                        </div>
++                    </label>
++
++                    <!-- IP RNode -->
++                    <label class="flex items-start gap-3 p-3 rounded-lg border border-gray-200 dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800 cursor-pointer">
++                        <input type="checkbox" v-model="lcsForm.ip_rnode" class="mt-1" />
++                        <div>
++                            <div class="font-medium text-gray-900 dark:text-zinc-100">IP RNode</div>
++                            <div class="text-xs text-gray-500 dark:text-zinc-400">iprnode.local:4545 — network-attached RNode</div>
++                        </div>
++                    </label>
++
++                    <!-- RNode LoRa -->
++                    <label class="flex items-start gap-3 p-3 rounded-lg border border-gray-200 dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800 cursor-pointer">
++                        <input type="checkbox" v-model="lcsForm.rnode_lora" class="mt-1" />
++                        <div class="flex-1">
++                            <div class="font-medium text-gray-900 dark:text-zinc-100">RNode LoRa (serial)</div>
++                            <div class="text-xs text-gray-500 dark:text-zinc-400">914.875 MHz · SF11 · direct-attached LoRa radio</div>
++                        </div>
++                    </label>
++
++                    <!-- RNode serial port finder (only relevant if RNode LoRa is checked) -->
++                    <div v-if="lcsForm.rnode_lora" class="ml-8 -mt-1 space-y-2">
++                        <div class="flex gap-2">
++                            <input v-model="lcsForm.rnode_serial_port" type="text" placeholder="e.g. /dev/ttyUSB0 or COM3"
++                                   class="flex-1 text-sm px-2 py-1.5 rounded border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100" />
++                            <button @click="findRnodePort" type="button" :disabled="isFindingPort"
++                                    class="text-sm px-3 py-1.5 rounded bg-[#1e5aa0] hover:bg-[#2f6fc0] text-white whitespace-nowrap">
++                                <span :class="{ 'animate-pulse': isFindingPort }">Find Port</span>
++                            </button>
++                        </div>
++                        <div v-if="lcsSerialPorts.length > 0" class="text-xs space-y-1">
++                            <div class="text-gray-500 dark:text-zinc-400">Detected ports (click to use):</div>
++                            <button v-for="p in lcsSerialPorts" :key="p.device" @click="lcsForm.rnode_serial_port = p.device" type="button"
++                                    class="block w-full text-left px-2 py-1 rounded bg-gray-100 dark:bg-zinc-800 hover:bg-blue-100 dark:hover:bg-zinc-700 text-gray-700 dark:text-zinc-300">
++                                {{ p.device }}<span v-if="p.description" class="text-gray-400"> — {{ p.description }}</span>
++                            </button>
++                        </div>
++                        <div v-else-if="isFindingPort === false && lcsSerialPorts.length === 0" class="text-xs text-gray-400">
++                            Click "Find Port" to scan for connected serial devices.
++                        </div>
++                    </div>
++
++                    <!-- enable immediately -->
++                    <label class="flex items-center gap-3 pt-1 cursor-pointer">
++                        <input type="checkbox" v-model="lcsForm.enable" />
++                        <span class="text-sm text-gray-700 dark:text-zinc-300">Enable interface(s) immediately</span>
++                    </label>
++
++                    <p class="text-xs text-gray-400 dark:text-zinc-500">
++                        Existing interfaces are never changed. MeshChat must be restarted for changes to take effect.
++                    </p>
++                </div>
++
++                <div class="flex justify-end gap-2 px-5 py-3 bg-gray-50 dark:bg-zinc-800/50 border-t border-gray-200 dark:border-zinc-700">
++                    <button @click="closeLcsDialog" type="button" class="px-4 py-2 text-sm rounded-lg text-gray-600 dark:text-zinc-300 hover:bg-gray-200 dark:hover:bg-zinc-700">Cancel</button>
++                    <button @click="submitLcsPresets" type="button" :disabled="isAddingLcsPresets"
++                            class="px-4 py-2 text-sm rounded-lg text-white bg-gradient-to-br from-[#178a5a] to-[#0d5e3c] hover:from-[#1fa96e] hover:to-[#127a4f]">
++                        <span :class="{ 'animate-pulse': isAddingLcsPresets }">Add Interfaces</span>
++                    </button>
++                </div>
++            </div>
++        </div>
++
+         <!-- header -->
+         <div class="flex bg-white dark:bg-zinc-950 p-2 border-gray-300 dark:border-zinc-900 border-b min-h-16 relative">
+             <!-- LCS: thin brand accent line along the bottom edge -->
+@@ -19,7 +102,7 @@
+                         Liberty Communication Systems
+                     </div>
+                     <div class="text-[11px] text-gray-400 dark:text-zinc-500">
+-                        <a target="_blank" href="https://liamcottle.com" class="text-blue-500 dark:text-blue-400 hover:underline">LCS MeshChat powered by Reticulum MeshChat by Liam Cottle</a>
++                        <span>built on MeshChat by Liam Cottle</span>
+                     </div>
+                 </div>
+                 <div class="flex my-auto ml-auto mr-0 sm:mr-2 space-x-1 sm:space-x-2">
+@@ -412,6 +495,16 @@ export default {
+         return {
+             isRestarting: false,
+             isAddingLcsPresets: false,
++            showLcsDialog: false,
++            isFindingPort: false,
++            lcsSerialPorts: [],
++            lcsForm: {
++                lcs_gateway: true,
++                ip_rnode: true,
++                rnode_lora: false,
++                enable: true,
++                rnode_serial_port: "",
++            },
+             isDocker: false,
+ 
+             reloadInterval: null,
+@@ -683,22 +776,55 @@ export default {
+                 // ignore error
+             }
+         },
+-        async addLcsPresets() {
+-            // adds the LCS preset interfaces (public TCP backbone + RNode LoRa template)
+-            // to the reticulum config via the backend.
++        addLcsPresets() {
++            // open the polished dialog for choosing which interfaces to add
++            this.showLcsDialog = true;
++        },
++        closeLcsDialog() {
++            this.showLcsDialog = false;
++        },
++        async findRnodePort() {
++            // ask the backend to enumerate serial ports; if a likely RNode is found,
++            // prefill the LoRa serial port field.
++            this.isFindingPort = true;
++            this.lcsSerialPorts = [];
++            try {
++                const response = await window.axios.get("/api/v1/reticulum/serial-ports");
++                this.lcsSerialPorts = response.data.ports ?? [];
++                if (this.lcsSerialPorts.length === 1) {
++                    // exactly one port -> prefill it
++                    this.lcsForm.rnode_serial_port = this.lcsSerialPorts[0].device;
++                }
++            } catch (e) {
++                this.lcsSerialPorts = [];
++            } finally {
++                this.isFindingPort = false;
++            }
++        },
++        async submitLcsPresets() {
+             if (this.isAddingLcsPresets) {
+                 return;
+             }
+-            const confirmed = await DialogUtils.confirm("Add the LCS preset interfaces?\n\n\u2022 TCP Client to public.lcs.network:1776 (enabled)\n\u2022 RNode LoRa Interface (disabled - set your serial port to use it)\n\nExisting interfaces will not be changed. MeshChat must be restarted afterwards.");
+-            if (!confirmed) {
++            // build the selected list from the checkboxes
++            const selected = [];
++            if (this.lcsForm.lcs_gateway) selected.push("lcs_gateway");
++            if (this.lcsForm.ip_rnode) selected.push("ip_rnode");
++            if (this.lcsForm.rnode_lora) selected.push("rnode_lora");
++            if (selected.length === 0) {
++                await DialogUtils.alert("Select at least one interface to add.");
+                 return;
+             }
+             this.isAddingLcsPresets = true;
+             try {
+-                const response = await window.axios.post("/api/v1/reticulum/interfaces/add-lcs-presets");
++                const response = await window.axios.post("/api/v1/reticulum/interfaces/add-lcs-presets", {
++                    selected: selected,
++                    enable: this.lcsForm.enable,
++                    rnode_serial_port: this.lcsForm.rnode_serial_port || null,
++                });
++                this.showLcsDialog = false;
+                 await DialogUtils.alert(response.data.message);
+             } catch (e) {
+-                const message = e?.response?.data?.message ?? "Failed to add LCS preset interfaces.";
++                const message = e?.response?.data?.message ?? "Failed to add LCS interfaces.";
+                 await DialogUtils.alert(message);
+             } finally {
+                 this.isAddingLcsPresets = false;
