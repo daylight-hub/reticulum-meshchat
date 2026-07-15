@@ -22,7 +22,7 @@ by Liam Cottle (MIT licensed — see `LICENSE`).
 - **Add LCS Interfaces** — a header button (all builds) opens a dialog to add LCS
   network interfaces to Reticulum. You choose which to add, whether to enable them
   immediately, and can auto-detect a connected RNode's serial port:
-  - **LCS Gateway Client** — `public.lcs.network:4243` (TCP, gateway mode)
+  - **LCS Gateway Client** — `public.lcs.network` (TCP, gateway mode)
   - **IP RNode** — `iprnode.local:4545` (TCP, network-attached RNode)
   - **RNode LoRa** — direct serial LoRa radio (914.875 MHz, SF11), added disabled
     unless a serial port is provided.
