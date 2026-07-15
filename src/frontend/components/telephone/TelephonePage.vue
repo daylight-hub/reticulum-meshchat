@@ -554,15 +554,7 @@ export default {
                 this.activeCall = response.data.active_call;
                 this.isMicMuted = response.data.active_call?.is_transmit_muted ?? false;
                 this.isSpeakerMuted = response.data.active_call?.is_receive_muted ?? false;
-
-                // LCS: ring for an incoming call (status 4 = ringing/incoming).
-                // start the ringtone when a call starts ringing, stop it otherwise.
-                const isRinging = !!(this.activeCall && this.activeCall.is_incoming && this.activeCall.status === 4);
-                if(isRinging){
-                    this.startRingtone();
-                } else {
-                    this.stopRingtone();
-                }
+                // note: incoming-call ringtone is handled globally in App.vue
 
                 // update audio profile to what is being used in call
                 const audioProfileId = response.data.active_call.audio_profile_id;

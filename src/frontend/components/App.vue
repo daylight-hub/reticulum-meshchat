@@ -99,10 +99,10 @@
                         <span class="font-bold text-lg tracking-tight bg-gradient-to-r from-[#1e5aa0] to-[#123a6b] dark:from-[#5b9be0] dark:to-[#2f6fc0] bg-clip-text text-transparent">LCS MeshChat</span>
                     </div>
                     <div class="text-xs text-gray-600 dark:text-zinc-300 font-medium tracking-wide uppercase">
-                        Liberty Communication Systems
+                        Liberty Communication Systems, Inc.
                     </div>
                     <div class="text-[11px] text-gray-400 dark:text-zinc-500">
-                        <span>built on MeshChat by Liam Cottle</span>
+                        <span>LCS MeshChat version {{ appInfo?.version }} powered by Reticulum MeshChat by Liam Cottle</span>
                     </div>
                 </div>
                 <div class="flex my-auto ml-auto mr-0 sm:mr-2 space-x-1 sm:space-x-2">
@@ -128,6 +128,18 @@
                                 </svg>
                             </span>
                             <span class="hidden lg:inline-block my-auto mx-1 text-sm font-medium">Add LCS Interfaces</span>
+                        </span>
+                    </button>
+
+                    <!-- LCS: Restart button (desktop builds - relaunches the app, same as interfaces page) -->
+                    <button v-if="!isDocker" @click="relaunchApp" type="button" title="Restart MeshChat" class="rounded-full group">
+                        <span class="flex items-center text-white bg-gradient-to-br from-[#c9a227] to-[#8a6d12] hover:from-[#e0b73a] hover:to-[#a8871a] shadow-sm hover:shadow-md transition-all duration-150 active:scale-95 px-2 py-1 rounded-full">
+                            <span>
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" class="w-6 h-6">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+                                </svg>
+                            </span>
+                            <span class="hidden sm:inline-block my-auto mx-1 text-sm font-medium">Restart</span>
                         </span>
                     </button>
 
@@ -494,6 +506,8 @@ export default {
     data() {
         return {
             isRestarting: false,
+            ringtoneCtx: null,
+            ringtoneTimer: null,
             isAddingLcsPresets: false,
             showLcsDialog: false,
             isFindingPort: false,
@@ -536,6 +550,16 @@ export default {
         // listen for websocket messages
         WebSocketConnection.on("message", this.onWebsocketMessage);
 
+        // LCS: prime the audio context on the first user interaction so the
+        // incoming-call ringtone is allowed to play later (autoplay policy).
+        const primeOnce = () => {
+            this.primeAudio();
+            window.removeEventListener("click", primeOnce);
+            window.removeEventListener("keydown", primeOnce);
+        };
+        window.addEventListener("click", primeOnce);
+        window.addEventListener("keydown", primeOnce);
+
         this.getAppInfo();
         this.getTelephoneStatus();
         this.updatePropagationNodeStatus();
@@ -563,19 +587,23 @@ export default {
                 }
                 case 'incoming_audio_call': {
                     NotificationUtils.showIncomingCallNotification();
+                    this.startRingtone();
                     break;
                 }
                 case 'telephone_ringing': {
                     this.getTelephoneStatus();
                     NotificationUtils.showIncomingCallNotification();
+                    this.startRingtone();
                     break;
                 }
                 case 'telephone_call_established': {
                     this.getTelephoneStatus();
+                    this.stopRingtone();
                     break;
                 }
                 case 'telephone_call_ended': {
                     this.getTelephoneStatus();
+                    this.stopRingtone();
                     break;
                 }
             }
@@ -838,6 +866,76 @@ export default {
                 // no history to go back to; fall back to the messages view
                 this.$router.push({ name: "messages" }).catch(() => {});
             }
+        },
+        // LCS: global incoming-call ringtone (Web Audio, generated - no file).
+        // lives in App.vue so it rings regardless of which page is open.
+        primeAudio() {
+            // create/resume the audio context on a user gesture so the ringtone
+            // can play later (browsers block audio until the user interacts).
+            try {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if(!AudioCtx){
+                    return;
+                }
+                if(!this.ringtoneCtx){
+                    this.ringtoneCtx = new AudioCtx();
+                }
+                if(this.ringtoneCtx.state === "suspended"){
+                    this.ringtoneCtx.resume().catch(() => {});
+                }
+            } catch(e) { /* best-effort */ }
+        },
+        startRingtone() {
+            if(this.ringtoneTimer){
+                return; // already ringing
+            }
+            try {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if(!AudioCtx){
+                    return;
+                }
+                if(!this.ringtoneCtx){
+                    this.ringtoneCtx = new AudioCtx();
+                }
+                const ctx = this.ringtoneCtx;
+                if(ctx.state === "suspended"){
+                    ctx.resume().catch(() => {});
+                }
+                const playBurst = () => {
+                    const now = ctx.currentTime;
+                    const gain = ctx.createGain();
+                    gain.connect(ctx.destination);
+                    const osc = ctx.createOscillator();
+                    osc.type = "sine";
+                    osc.frequency.setValueAtTime(440, now);
+                    osc.frequency.setValueAtTime(480, now + 0.2);
+                    osc.connect(gain);
+                    gain.gain.setValueAtTime(0.0001, now);
+                    gain.gain.exponentialRampToValueAtTime(0.25, now + 0.02);
+                    gain.gain.setValueAtTime(0.25, now + 0.2);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
+                    gain.gain.setValueAtTime(0.0001, now + 0.3);
+                    gain.gain.exponentialRampToValueAtTime(0.25, now + 0.32);
+                    gain.gain.setValueAtTime(0.25, now + 0.5);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.52);
+                    osc.start(now);
+                    osc.stop(now + 0.55);
+                };
+                playBurst();
+                this.ringtoneTimer = setInterval(playBurst, 3000);
+            } catch(e) {
+                console.error("ringtone error:", e);
+            }
+        },
+        stopRingtone() {
+            if(this.ringtoneTimer){
+                clearInterval(this.ringtoneTimer);
+                this.ringtoneTimer = null;
+            }
+        },
+        relaunchApp() {
+            // desktop restart - relaunches the electron app (same as the interfaces page)
+            ElectronUtils.relaunch();
         },
         async restartApp() {
             // restarts the docker container's app process. the backend exits and docker's

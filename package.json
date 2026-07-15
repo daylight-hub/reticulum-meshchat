@@ -46,7 +46,8 @@
             "**/*"
           ]
         }
-      ]
+      ],
+      "icon": "build/icon.icns"
     },
     "win": {
       "artifactName": "LCS-ReticulumMeshChat-v${version}-${os}.${ext}",
@@ -66,7 +67,8 @@
             "**/*"
           ]
         }
-      ]
+      ],
+      "icon": "build/icon.ico"
     },
     "linux": {
       "artifactName": "LCS-ReticulumMeshChat-v${version}-${os}.${ext}",
@@ -79,7 +81,8 @@
             "**/*"
           ]
         }
-      ]
+      ],
+      "icon": "build/icon.png"
     },
     "dmg": {
       "writeUpdateInfo": false
@@ -90,7 +93,10 @@
     "nsis": {
       "artifactName": "LCS-ReticulumMeshChat-v${version}-${os}-installer.${ext}",
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico"
     }
   },
   "dependencies": {
