@@ -238,6 +238,10 @@ class ReticulumMeshChat:
 
         return added
 
+    # returns True when running inside a docker container
+    def is_docker(self):
+        return os.path.exists("/.dockerenv")
+
     # init telephone
     def init_telephone(self):
         self.telephone = Telephone(identity=self.identity)
@@ -245,6 +249,21 @@ class ReticulumMeshChat:
         self.telephone.set_ringing_callback(self.on_telephone_ringing)
         self.telephone.set_established_callback(self.on_telephone_call_established)
         self.telephone.set_ended_callback(self.on_telephone_call_ended)
+
+        # LCS: in Docker there is no microphone or PulseAudio, so LXST's server-side
+        # audio can't work. Install the WebSocket audio bridge so the browser provides
+        # the mic and speaker instead. Desktop builds keep normal server-side audio.
+        if self.is_docker():
+            try:
+                from src.backend.webrtc_audio_bridge import AudioBridge, install_bridge_on_telephone
+                self.audio_bridge = AudioBridge()
+                install_bridge_on_telephone(self.telephone, self.audio_bridge)
+                RNS.log("LCS: WebSocket audio bridge installed for Docker telephone", RNS.LOG_NOTICE)
+            except Exception as e:
+                RNS.log(f"LCS: failed to install WebSocket audio bridge: {e}", RNS.LOG_ERROR)
+                self.audio_bridge = None
+        else:
+            self.audio_bridge = None
 
     # enable telephone
     def enable_telephone(self):
@@ -533,6 +552,57 @@ class ReticulumMeshChat:
             return web.json_response({
                 "message": "Hanging up call...",
             })
+
+        # LCS: browser <-> server audio bridge websocket (Docker builds only).
+        # the browser sends microphone PCM frames (binary) and receives call audio
+        # (binary) to play back. only meaningful when the audio bridge is installed.
+        @routes.get("/api/v1/telephone/audio-bridge")
+        async def index(request):
+            websocket_response = web.WebSocketResponse()
+            await websocket_response.prepare(request)
+
+            bridge = getattr(self, "audio_bridge", None)
+            if bridge is None:
+                await websocket_response.close(code=WSCloseCode.POLICY_VIOLATION,
+                                               message=b"audio bridge not available")
+                return websocket_response
+
+            bridge.activate()
+
+            # task: push speaker frames (call audio) down to the browser
+            async def pump_speaker():
+                try:
+                    while not websocket_response.closed:
+                        frames = bridge.drain_speaker_frames(max_frames=10)
+                        if len(frames) == 0:
+                            await asyncio.sleep(0.01)
+                            continue
+                        for frame in frames:
+                            if websocket_response.closed:
+                                break
+                            # frame may be bytes or a buffer-like object
+                            try:
+                                await websocket_response.send_bytes(bytes(frame))
+                            except Exception:
+                                pass
+                except Exception as e:
+                    RNS.log(f"audio-bridge speaker pump ended: {e}", RNS.LOG_DEBUG)
+
+            speaker_task = asyncio.ensure_future(pump_speaker())
+
+            try:
+                async for msg in websocket_response:
+                    if msg.type == WSMsgType.BINARY:
+                        # microphone frame from the browser -> LXST transmit pipeline
+                        bridge.push_mic_frame(msg.data)
+                    elif msg.type == WSMsgType.ERROR:
+                        break
+            except Exception as e:
+                RNS.log(f"audio-bridge websocket error: {e}", RNS.LOG_DEBUG)
+            finally:
+                speaker_task.cancel()
+
+            return websocket_response
 
         # switch outbound audio profile
         @routes.get("/api/v1/telephone/switch-audio-profile/{audio_profile_id}")

@@ -17,8 +17,8 @@
 
     <!-- about -->
     <div class="mx-auto text-center mb-2">
-        <div class="font-bold">Reticulum MeshChat</div>
-        <div class="text-sm"><span id="app-version"></span> Developed by Liam Cottle</div>
+        <div class="font-bold">LCS MeshChat <span id="app-version"></span></div>
+        <div class="text-sm">powered by Reticulum MeshChat by Liam Cottle</div>
     </div>
 
     <!-- loading spinner -->
@@ -38,7 +38,7 @@
 
     async function showAppVersion() {
         const appVersion = await window.electron.appVersion();
-        document.getElementById("app-version").innerText = "v" + appVersion;
+        document.getElementById("app-version").innerText = "version " + appVersion;
     }
 
     async function check() {

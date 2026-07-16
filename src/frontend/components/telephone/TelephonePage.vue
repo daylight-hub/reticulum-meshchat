@@ -285,6 +285,7 @@
 
 <script>
 import Utils from "../../js/Utils";
+import TelephoneAudioBridge from "../../js/TelephoneAudioBridge";
 import MaterialDesignIcon from "../MaterialDesignIcon.vue";
 
 export default {
@@ -297,6 +298,8 @@ export default {
     },
     data() {
         return {
+            isDocker: false,
+            audioBridge: null,
             ringtone: null,
 
             config: null,
@@ -327,6 +330,9 @@ export default {
         this.getAudioProfiles();
         this.getTelephoneStatus();
 
+        // LCS: determine if we're running in docker (browser audio bridge needed)
+        this.getIsDocker();
+
         // update telephone status every second
         this.statusInterval = setInterval(() => {
             this.getTelephoneStatus();
@@ -348,8 +354,37 @@ export default {
             clearInterval(this.statusInterval);
         }
         this.stopRingtone();
+        this.stopAudioBridge();
     },
     methods: {
+        // LCS: fetch whether the server is running in docker
+        async getIsDocker() {
+            try {
+                const response = await axios.get("/api/v1/app/info");
+                this.isDocker = response.data.app_info?.is_docker === true;
+            } catch(e) {
+                this.isDocker = false;
+            }
+        },
+        // LCS: browser audio bridge (Docker only) - captures mic + plays call audio
+        async startAudioBridge() {
+            if(this.audioBridge){
+                return;
+            }
+            try {
+                this.audioBridge = new TelephoneAudioBridge();
+                await this.audioBridge.start();
+            } catch(e) {
+                console.error("failed to start audio bridge:", e);
+                this.audioBridge = null;
+            }
+        },
+        stopAudioBridge() {
+            if(this.audioBridge){
+                try { this.audioBridge.stop(); } catch(e) {}
+                this.audioBridge = null;
+            }
+        },
         // LCS: generated ringtone (Web Audio) - no audio file needed.
         // plays a repeating two-tone ring while an incoming call is ringing.
         startRingtone() {
@@ -551,10 +586,22 @@ export default {
                 const response = await axios.get("/api/v1/telephone/status");
 
                 // update ui
+                const previousStatus = this.activeCall?.status;
                 this.activeCall = response.data.active_call;
                 this.isMicMuted = response.data.active_call?.is_transmit_muted ?? false;
                 this.isSpeakerMuted = response.data.active_call?.is_receive_muted ?? false;
                 // note: incoming-call ringtone is handled globally in App.vue
+
+                // LCS: in Docker, run the browser audio bridge while a call is connected
+                // (status 6). the server has no mic/speaker, so the browser provides them.
+                const nowStatus = this.activeCall?.status;
+                if(this.isDocker){
+                    if(nowStatus === 6 && previousStatus !== 6){
+                        this.startAudioBridge();
+                    } else if(nowStatus !== 6 && previousStatus === 6){
+                        this.stopAudioBridge();
+                    }
+                }
 
                 // update audio profile to what is being used in call
                 const audioProfileId = response.data.active_call.audio_profile_id;
