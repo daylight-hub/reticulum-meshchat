@@ -17,6 +17,17 @@ FROM python:3.11-bookworm
 
 WORKDIR /app
 
+# Install system libraries required by LXST for call audio.
+# libopus0 provides the Opus codec used to encode/decode telephone audio;
+# without it, incoming/outgoing calls fail with "Opus library wasn't found".
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        libopus0 \
+        libopusfile0 \
+        libopusenc0 \
+        opus-tools \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install Python deps
 COPY ./requirements.txt .
 RUN pip install -r requirements.txt
