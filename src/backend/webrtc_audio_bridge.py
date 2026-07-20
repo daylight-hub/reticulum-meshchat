@@ -199,8 +199,18 @@ class WebSocketAudioSource(Source):
                 if self.sink and self.sink.can_receive(from_source=self):
                     self.sink.handle_frame(frame_samples, self)
                     frames_fed += 1
+                    # one-time diagnostic: log frame shape + mixer target on first frame
+                    if frames_fed == 1:
+                        try:
+                            shape = getattr(frame_samples, "shape", None)
+                            target = getattr(self.sink, "target_frame_ms", None)
+                            samplerate = getattr(self.sink, "samplerate", None)
+                            RNS.log(f"WebRTC bridge mic DIAG: frame_shape={shape} src_samplerate={self.samplerate} "
+                                    f"mixer_target_frame_ms={target} mixer_samplerate={samplerate}", RNS.LOG_NOTICE)
+                        except Exception:
+                            pass
             except Exception as e:
-                RNS.log(f"WebSocketAudioSource feed error: {e}", RNS.LOG_DEBUG)
+                RNS.log(f"WebSocketAudioSource feed error: {e}", RNS.LOG_NOTICE)
 
             # periodic diagnostic so we can see if mic frames flow to the mixer
             if time.time() - last_log >= 3.0:
