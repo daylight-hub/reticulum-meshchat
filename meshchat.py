@@ -351,6 +351,10 @@ class ReticulumMeshChat:
         print("on_telephone_call_established: {}".format(caller_identity.hash.hex()))
         AsyncUtils.run_async(self.websocket_broadcast(json.dumps({
             "type": "telephone_call_established",
+            # tell the browser whether it must provide mic/speaker (Docker has no
+            # server-side audio). authoritative from the backend, so the browser
+            # doesn't depend on possibly-stale app_info.
+            "use_browser_audio": self.is_docker(),
         })))
 
     # handle telephone call ended

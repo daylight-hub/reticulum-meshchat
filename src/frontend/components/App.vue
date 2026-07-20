@@ -596,9 +596,10 @@ export default {
                 case 'telephone_call_established': {
                     this.getTelephoneStatus();
                     this.stopRingtone();
-                    // LCS: Docker uses the browser for call audio - start the bridge
-                    // globally so it works even when the telephone page isn't open.
-                    if(this.isDocker){
+                    // LCS: start the browser audio bridge when the backend says to
+                    // (Docker has no server-side mic/speaker). We trust the per-call
+                    // flag from the backend over the possibly-stale app_info isDocker.
+                    if(data.use_browser_audio === true || this.isDocker){
                         this.startAudioBridge();
                     }
                     break;
@@ -606,9 +607,7 @@ export default {
                 case 'telephone_call_ended': {
                     this.getTelephoneStatus();
                     this.stopRingtone();
-                    if(this.isDocker){
-                        this.stopAudioBridge();
-                    }
+                    this.stopAudioBridge();
                     break;
                 }
             }
