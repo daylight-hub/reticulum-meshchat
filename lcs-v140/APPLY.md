@@ -1,57 +1,54 @@
-# LCS MeshChat v1.4.0 - full codec support (Opus + Codec2) both desktop and Docker
+# LCS MeshChat v1.4.0 - full codec support + regression fix + diagnostics
 
-## Fixes
-1. DESKTOP MIC (Windows/Mac/Linux) - fixes no-outbound-audio since v1.2.0. The global
-   ringtone held a Web Audio AudioContext alive for the whole session, interfering with
-   the system mic. Now the ringtone opens its context only while ringing and closes it
-   right after. Works for ALL codecs on desktop (desktop uses the real mic via LXST, so
-   Codec2/Opus all work once the mic is freed).
+## What this addresses
+Your last log showed Docker calls establishing then ending in ~2s with NO mic frames and
+NO "received=" diagnostic - i.e. the browser audio bridge wasn't feeding/consuming audio,
+so LXST timed out the call. This build hardens that path and adds diagnostics to pinpoint
+it if it persists.
 
-2. DOCKER MIC - now works for EVERY codec/quality, not just Opus MEDIUM:
-   - Root cause (from your log): browser sent fixed-size frames but each codec/profile
-     needs a different frame duration (Opus 60ms, Codec2 200/320/400ms). MEDIUM happened
-     to tolerate it; everything else rejected the mismatched frame.
-   - Fix: the backend now computes the exact frame size for the active profile and tells
-     the browser over the audio-bridge websocket ("frame_config" message). The browser
-     re-chunks mic audio to that exact size. So:
-       Opus MEDIUM/HIGH/MAX -> 2880 samples (60ms)
-       Codec2 LOW           -> 9600 samples (200ms)
-       Codec2 VERY_LOW      -> 15360 samples (320ms)
-       Codec2 ULTRA_LOW     -> 19200 samples (400ms)
-
-3. Hardened outgoing-call profile param (could send empty and crash call setup).
+## Changes since the last (2880) build
+1. frame_config sent ONCE up front (before the audio stream) instead of interleaved in
+   the speaker pump loop - cleaner, can't disturb the binary audio stream.
+2. Dynamic per-codec frame sizing retained (Opus 60ms=2880, Codec2 200/320/400ms) so all
+   codecs get the right frame duration.
+3. getUserMedia now logs a LOUD, clear error to the browser console if it fails (the most
+   common reason the bridge silently doesn't start: page not on HTTPS, or mic permission
+   denied).
+4. Desktop mic fix (ringtone AudioContext release) + profile param hardening retained.
 
 ## Files
 - package.json, package-lock.json                      (v1.4.0)
-- meshchat.py                                           (sends frame_config to browser)
-- src/backend/webrtc_audio_bridge.py                   (computes per-profile frame size)
-- src/frontend/js/TelephoneAudioBridge.js              (dynamic frame size from backend)
-- src/frontend/components/App.vue                       (ringtone AudioContext lifecycle)
+- meshchat.py                                           (frame_config sent once up front)
+- src/backend/webrtc_audio_bridge.py                   (per-codec frame size + diagnostics)
+- src/frontend/js/TelephoneAudioBridge.js              (dynamic frame size + loud mic errors)
+- src/frontend/components/App.vue                       (global bridge + ringtone lifecycle)
 - src/frontend/components/telephone/TelephonePage.vue  (profile param hardening)
 
 ## Apply + push
     Copy-Item -Path lcs-v140\* -Destination . -Recurse -Force
     npm run build-frontend
     git add -A
-    git commit -m "v1.4.0: full Opus+Codec2 support (dynamic frame sizing) + desktop mic fix"
+    git commit -m "v1.4.0: per-codec frame sizing, send frame_config up front, loud mic diagnostics"
     git config http.version HTTP/1.1
     git push origin lcs
+    # after Actions rebuilds:
+    cd /opt/reticulum-meshchat && docker compose pull && docker compose up -d
 
-## Then
-- Docker: docker compose pull && docker compose up -d (after Actions rebuilds)
-- Desktop: build the app and test
+## CRUCIAL - if audio still fails, capture the BROWSER CONSOLE (this is the missing piece)
+The container log shows the server side; the browser side is where the bridge lives.
+1. In the browser on the MeshChat page, press F12 -> Console tab.
+2. Make a call.
+3. Look for and copy any of these:
+   - "[AudioBridge] getUserMedia failed ..."  -> mic/HTTPS/permission problem (the likely cause)
+   - "failed to start audio bridge: ..."      -> bridge threw during setup
+   - any red errors mentioning audio-bridge, WebSocket, or getUserMedia
+4. Also grab the container log line "WebRTC bridge mic: received=N fed_to_mixer=M"
+   (or note if it never appears).
+Paste BOTH as text.
 
-## Test matrix
-- DOCKER: call on each quality - Opus MEDIUM/HIGH/MAX and each Codec2 level. All should
-  now send mic audio. Watch the log for:
-    "WebRTC bridge: target frame <ms> -> <N> samples @ 48000Hz for browser mic"
-- DESKTOP (Windows): call on any codec - the other side should hear you.
-
-## Honest caveats
-- Docker Codec2 adds real latency by design (200-400ms frames = that much buffering
-  before each send). That's inherent to Codec2's large frames, not a bug. Voice is still
-  intelligible, just with noticeable delay on the ultra-low-bandwidth profiles.
-- The DESKTOP mic fix remains a strong hypothesis (couldn't reproduce here). The Docker
-  fixes are confirmed by your diagnostic log. Please test desktop and report.
-- If a Codec2 call still fails in Docker, send the log line "WebRTC bridge: target frame..."
-  plus any "Error while mixing frame" - that'll show if the computed size is off.
+## Most likely cause (based on the symptom)
+Calls dying in ~2s with no mic frames = the browser bridge isn't connecting. The #1 reason
+is getUserMedia being blocked because the page isn't served over HTTPS (browsers only allow
+mic access over HTTPS or localhost). Confirm you're reaching MeshChat via the HTTPS reverse
+proxy (https://192.168.2.1:8443), NOT plain http://<ip>:8000. If you're on http, the mic is
+blocked and that fully explains both directions failing.

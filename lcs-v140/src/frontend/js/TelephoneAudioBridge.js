@@ -32,15 +32,24 @@ export default class TelephoneAudioBridge {
         this.running = true;
 
         // 1. get the microphone
-        this.micStream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-                channelCount: BRIDGE_CHANNELS,
-                sampleRate: BRIDGE_SAMPLERATE,
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true,
-            },
-        });
+        try {
+            this.micStream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    channelCount: BRIDGE_CHANNELS,
+                    sampleRate: BRIDGE_SAMPLERATE,
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true,
+                },
+            });
+        } catch (err) {
+            // most common cause: page not served over HTTPS (getUserMedia needs a secure
+            // context) or microphone permission denied. surface it loudly.
+            console.error("[AudioBridge] getUserMedia failed - mic will not work. " +
+                "Ensure the page is served over HTTPS (or localhost) and mic permission is granted.", err);
+            this.running = false;
+            throw err;
+        }
 
         // 2. audio context for both capture and playback
         this.audioContext = new (window.AudioContext || window.webkitAudioContext)({

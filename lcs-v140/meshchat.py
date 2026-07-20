@@ -606,14 +606,25 @@ class ReticulumMeshChat:
 
             bridge.activate()
 
-            # task: push speaker frames (call audio) down to the browser, and keep the
-            # browser informed of the mic frame size it should send (matches the mixer
-            # target so Opus AND Codec2 frame durations line up).
+            # tell the browser the mic frame size once, up front (matches the mixer target
+            # so Opus AND Codec2 frame durations line up). best-effort - must never break
+            # the audio stream.
+            try:
+                initial_target = getattr(bridge, "target_frame_samples", None)
+                if initial_target:
+                    await websocket_response.send_json({
+                        "type": "frame_config",
+                        "frame_samples": initial_target,
+                    })
+            except Exception as e:
+                RNS.log(f"audio-bridge: could not send initial frame_config: {e}", RNS.LOG_DEBUG)
+
+            # task: push speaker frames (call audio) down to the browser
             async def pump_speaker():
-                last_target_sent = None
+                last_target_sent = getattr(bridge, "target_frame_samples", None)
                 try:
                     while not websocket_response.closed:
-                        # notify browser of the target mic frame size when it changes
+                        # if the target changes mid-session (profile switch), notify browser
                         target = getattr(bridge, "target_frame_samples", None)
                         if target is not None and target != last_target_sent:
                             try:
@@ -621,9 +632,9 @@ class ReticulumMeshChat:
                                     "type": "frame_config",
                                     "frame_samples": target,
                                 })
-                                last_target_sent = target
                             except Exception:
                                 pass
+                            last_target_sent = target
                         frames = bridge.drain_speaker_frames(max_frames=10)
                         if len(frames) == 0:
                             await asyncio.sleep(0.01)
