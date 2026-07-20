@@ -237,13 +237,6 @@ class AudioBridge:
         # LXST call audio -> browser
         self.outgoing = queue.Queue(maxsize=max_queue)
         self.active = False
-        # how many samples per frame the browser should send (set per call so Opus
-        # and Codec2 frame durations match the mixer target). 2880 = 60ms @ 48k default.
-        self.target_frame_samples = 2880
-
-    def set_target_frame_samples(self, samples):
-        if samples and samples > 0:
-            self.target_frame_samples = int(samples)
 
     # ---- lifecycle ----
 
@@ -414,21 +407,6 @@ def install_bridge_on_telephone(telephone, bridge):
                         t.active_call.packetizer.squelch()
 
                     t.transmit_mixer = Mixer(target_frame_ms=t.target_frame_time_ms, gain=t.transmit_gain)
-
-                    # tell the browser how many samples per frame to send so the frame
-                    # duration matches the codec (Opus 60ms, Codec2 200-400ms). the mixer
-                    # doesn't compute samples_per_frame until a frame flows, so we derive it
-                    # from the target frame time and our source samplerate (48k). we also
-                    # read the mixer's possibly-quantized target if available.
-                    try:
-                        target_ms = getattr(t.transmit_mixer, "target_frame_ms", None) or t.target_frame_time_ms
-                        browser_spf = int(round((target_ms / 1000.0) * BRIDGE_SAMPLERATE))
-                        if browser_spf > 0:
-                            bridge.set_target_frame_samples(browser_spf)
-                            RNS.log(f"WebRTC bridge: target frame {target_ms}ms -> {browser_spf} samples "
-                                    f"@ {BRIDGE_SAMPLERATE}Hz for browser mic", RNS.LOG_NOTICE)
-                    except Exception as e:
-                        RNS.log(f"WebRTC bridge: could not compute target frame size: {e}", RNS.LOG_WARNING)
 
                     # *** THE KEY CHANGE: WebSocket mic source instead of LineSource ***
                     ws_source = bridge.make_source(sink=t.transmit_mixer, filters=t.active_call.filters, codec=PassthroughCodec())
