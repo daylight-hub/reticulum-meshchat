@@ -1,54 +1,67 @@
-# LCS MeshChat v1.4.0 - full codec support + regression fix + diagnostics
+# LCS MeshChat v1.4.0 - fix Docker no-audio (LineSource crash on profile switch + Docker detection)
 
-## What this addresses
-Your last log showed Docker calls establishing then ending in ~2s with NO mic frames and
-NO "received=" diagnostic - i.e. the browser audio bridge wasn't feeding/consuming audio,
-so LXST timed out the call. This build hardens that path and adds diagnostics to pinpoint
-it if it persists.
+## Your log revealed the REAL bug (finally the root cause)
+Two problems, both now fixed:
 
-## Changes since the last (2880) build
-1. frame_config sent ONCE up front (before the audio stream) instead of interleaved in
-   the speaker pump loop - cleaner, can't disturb the binary audio stream.
-2. Dynamic per-codec frame sizing retained (Opus 60ms=2880, Codec2 200/320/400ms) so all
-   codecs get the right frame duration.
-3. getUserMedia now logs a LOUD, clear error to the browser console if it fails (the most
-   common reason the bridge silently doesn't start: page not on HTTPS, or mic permission
-   denied).
-4. Desktop mic fix (ringtone AudioContext release) + profile param hardening retained.
+### 1. LineSource crash on profile switch (the audio killer)
+Your log showed LXST calling __reconfigure_transmit_pipeline -> LineSource -> libpulse.so
+crash. This happens when the remote end negotiates a codec/profile mid-call. My earlier
+override only replaced the INITIAL mic setup (__open_pipelines); I missed this SECOND place
+(__reconfigure_transmit_pipeline) that also builds a PulseAudio LineSource. In Docker there's
+no PulseAudio, so it crashed and killed audio in BOTH directions.
+FIX: override __reconfigure_transmit_pipeline too, rebuilding with our WebSocket mic source
+instead of LineSource (and updating the browser frame size for the new profile).
+
+### 2. Docker not detected (why you saw desktop buttons)
+You saw "Add LCS Interfaces" and the desktop restart button in Docker - because is_docker()
+only checked /.dockerenv, which your container doesn't have. So the app thought it wasn't in
+Docker: it hid the browser audio bridge AND showed desktop-only UI.
+FIX: is_docker() now checks /.dockerenv, cgroup info, AND an env override.
+
+## IMPORTANT - add this to your docker-compose to guarantee detection
+In your docker-compose.yml, under the reticulum-meshchat service, add:
+
+    environment:
+      - LCS_DOCKER=1
+
+This is the most reliable signal. The cgroup auto-detection should also work, but the env
+var guarantees it. Example:
+
+    services:
+      reticulum-meshchat:
+        image: ghcr.io/daylight-hub/reticulum-meshchat:latest
+        environment:
+          - LCS_DOCKER=1
+        # ...rest of your config...
 
 ## Files
-- package.json, package-lock.json                      (v1.4.0)
-- meshchat.py                                           (frame_config sent once up front)
-- src/backend/webrtc_audio_bridge.py                   (per-codec frame size + diagnostics)
-- src/frontend/js/TelephoneAudioBridge.js              (dynamic frame size + loud mic errors)
-- src/frontend/components/App.vue                       (global bridge + ringtone lifecycle)
-- src/frontend/components/telephone/TelephonePage.vue  (profile param hardening)
+- meshchat.py                            (robust is_docker + app_info)
+- src/backend/webrtc_audio_bridge.py     (override __reconfigure_transmit_pipeline)
+- src/frontend/* , package.json          (prior v1.4.0 work retained)
 
 ## Apply + push
     Copy-Item -Path lcs-v140\* -Destination . -Recurse -Force
     npm run build-frontend
     git add -A
-    git commit -m "v1.4.0: per-codec frame sizing, send frame_config up front, loud mic diagnostics"
+    git commit -m "v1.4.0: fix Docker audio - override reconfigure_transmit_pipeline (LineSource crash) + robust docker detection"
     git config http.version HTTP/1.1
     git push origin lcs
-    # after Actions rebuilds:
-    cd /opt/reticulum-meshchat && docker compose pull && docker compose up -d
 
-## CRUCIAL - if audio still fails, capture the BROWSER CONSOLE (this is the missing piece)
-The container log shows the server side; the browser side is where the bridge lives.
-1. In the browser on the MeshChat page, press F12 -> Console tab.
-2. Make a call.
-3. Look for and copy any of these:
-   - "[AudioBridge] getUserMedia failed ..."  -> mic/HTTPS/permission problem (the likely cause)
-   - "failed to start audio bridge: ..."      -> bridge threw during setup
-   - any red errors mentioning audio-bridge, WebSocket, or getUserMedia
-4. Also grab the container log line "WebRTC bridge mic: received=N fed_to_mixer=M"
-   (or note if it never appears).
-Paste BOTH as text.
+## Then on the Pi
+1. Add the LCS_DOCKER=1 environment line to docker-compose.yml (see above)
+2. docker compose pull
+3. docker compose up -d
 
-## Most likely cause (based on the symptom)
-Calls dying in ~2s with no mic frames = the browser bridge isn't connecting. The #1 reason
-is getUserMedia being blocked because the page isn't served over HTTPS (browsers only allow
-mic access over HTTPS or localhost). Confirm you're reaching MeshChat via the HTTPS reverse
-proxy (https://192.168.2.1:8443), NOT plain http://<ip>:8000. If you're on http, the mic is
-blocked and that fully explains both directions failing.
+## Test
+- The "Add LCS Interfaces" button and desktop restart should be GONE in Docker (confirms
+  detection works).
+- Calls should now pass audio both directions on all codecs, including after a profile
+  switch. Watch the log:
+    "WebRTC bridge: __reconfigure_transmit_pipeline (override) called"
+    "WebRTC bridge: transmit pipeline reconfigured with WebSocket mic"
+  ...instead of the libpulse.so crash.
+
+## Why this is the real fix
+The libpulse.so traceback is unambiguous: LXST was building a PulseAudio mic source in a
+container with no PulseAudio. That crash, on every profile-switch signal, tore down the
+audio. Overriding that method (as we already did for the initial setup) is the correct fix.

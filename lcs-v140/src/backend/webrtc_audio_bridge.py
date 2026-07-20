@@ -458,4 +458,77 @@ def install_bridge_on_telephone(telephone, bridge):
         RNS.log("WebRTC bridge: could not find __open_pipelines; "
                 "microphone bridging unavailable on this LXST version", RNS.LOG_WARNING)
 
+    # --- override __reconfigure_transmit_pipeline (runs on profile switch) ---
+    # When the remote negotiates a codec/profile mid-call, LXST rebuilds the transmit
+    # pipeline with a LineSource (PulseAudio mic), which crashes in Docker (no libpulse).
+    # We replace it with a version that rebuilds using our WebSocket mic source and
+    # updates the browser frame size for the new profile.
+    reconf_name = "_Telephone__reconfigure_transmit_pipeline"
+    original_reconf = getattr(telephone, reconf_name, None)
+
+    if original_reconf is not None:
+        def reconfigure_transmit_override(*args, **kwargs):
+            RNS.log("WebRTC bridge: __reconfigure_transmit_pipeline (override) called", RNS.LOG_NOTICE)
+            try:
+                from LXST.Mixer import Mixer
+                from LXST.Pipeline import Pipeline
+                import LXST.Primitives.Telephony as Tel
+                Signalling = Tel.Signalling
+
+                t = telephone
+                if t.transmit_pipeline and t.call_status == Signalling.STATUS_ESTABLISHED:
+                    # stop the old chain
+                    try:
+                        if t.audio_input: t.audio_input.stop()
+                    except Exception:
+                        pass
+                    try:
+                        t.transmit_mixer.stop()
+                    except Exception:
+                        pass
+                    try:
+                        t.transmit_pipeline.stop()
+                    except Exception:
+                        pass
+
+                    # rebuild mixer for the (possibly new) target frame time
+                    t.transmit_mixer = Mixer(target_frame_ms=t.target_frame_time_ms, gain=t.transmit_gain)
+
+                    # update the browser's mic frame size for the new profile
+                    try:
+                        target_ms = getattr(t.transmit_mixer, "target_frame_ms", None) or t.target_frame_time_ms
+                        browser_spf = int(round((target_ms / 1000.0) * BRIDGE_SAMPLERATE))
+                        if browser_spf > 0:
+                            bridge.set_target_frame_samples(browser_spf)
+                            RNS.log(f"WebRTC bridge: reconfigured target frame {target_ms}ms -> {browser_spf} samples", RNS.LOG_NOTICE)
+                    except Exception:
+                        pass
+
+                    # rebuild our WebSocket mic source instead of a LineSource
+                    ws_source = bridge.make_source(sink=t.transmit_mixer,
+                                                   filters=t.active_call.filters,
+                                                   codec=PassthroughCodec())
+                    t.audio_input = ws_source
+
+                    t.transmit_pipeline = Pipeline(source=t.transmit_mixer,
+                                                   codec=t.transmit_codec,
+                                                   sink=t.active_call.packetizer)
+
+                    try:
+                        t.transmit_mixer.mute(getattr(t, "_Telephone__transmit_muted", False))
+                    except Exception:
+                        pass
+                    t.transmit_mixer.start()
+                    ws_source.start()
+                    t.transmit_pipeline.start()
+                    RNS.log("WebRTC bridge: transmit pipeline reconfigured with WebSocket mic", RNS.LOG_NOTICE)
+            except Exception as e:
+                import traceback
+                RNS.log(f"WebRTC bridge: reconfigure override failed: {e}", RNS.LOG_ERROR)
+                RNS.log(traceback.format_exc(), RNS.LOG_ERROR)
+        setattr(telephone, reconf_name, reconfigure_transmit_override)
+    else:
+        RNS.log("WebRTC bridge: could not find __reconfigure_transmit_pipeline; "
+                "profile switches may crash audio on this LXST version", RNS.LOG_WARNING)
+
     return telephone

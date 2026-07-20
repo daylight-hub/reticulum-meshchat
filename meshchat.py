@@ -268,7 +268,27 @@ class ReticulumMeshChat:
 
     # returns True when running inside a docker container
     def is_docker(self):
-        return os.path.exists("/.dockerenv")
+        # detect containerized environments robustly. /.dockerenv isn't always present
+        # (depends how the image is built/run), so check several signals and allow an
+        # explicit override via environment variable.
+        try:
+            env_flag = os.environ.get("LCS_DOCKER") or os.environ.get("RUNNING_IN_DOCKER")
+            if env_flag is not None:
+                return str(env_flag).strip().lower() in ("1", "true", "yes", "on")
+            if os.path.exists("/.dockerenv"):
+                return True
+            # container runtimes leave traces in cgroup info
+            for path in ("/proc/1/cgroup", "/proc/self/cgroup"):
+                try:
+                    with open(path, "r") as f:
+                        contents = f.read()
+                    if "docker" in contents or "containerd" in contents or "kubepods" in contents:
+                        return True
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        return False
 
     # init telephone
     def init_telephone(self):
@@ -1572,7 +1592,7 @@ class ReticulumMeshChat:
                     "reticulum_config_path": self.reticulum.configpath,
                     "is_connected_to_shared_instance": self.reticulum.is_connected_to_shared_instance,
                     "is_transport_enabled": self.reticulum.transport_enabled(),
-                    "is_docker": os.path.exists("/.dockerenv"),
+                    "is_docker": self.is_docker(),
                 },
             })
 
