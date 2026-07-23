@@ -30,6 +30,24 @@
                 </div>
             </RouterLink>
 
+            <!-- rnode configuration tool (LCS) -->
+            <a target="_blank" href="/rnode-config/index.html" class="group flex bg-white dark:bg-zinc-800 p-2 rounded shadow hover:bg-gray-50 dark:hover:bg-zinc-700">
+                <div class="mr-2">
+                    <div class="flex items-center justify-center size-14 rounded shadow bg-gradient-to-br from-[#1e5aa0] to-[#123a6b] p-1">
+                        <img class="w-full h-full object-contain" src="/assets/images/lcs-logo.png" alt="Liberty Communication Systems" />
+                    </div>
+                </div>
+                <div class="my-auto mr-auto dark:text-gray-200">
+                    <div class="font-bold">RNode Configuration Tool</div>
+                    <div class="text-sm">Flash and configure RNode LoRa radios.</div>
+                </div>
+                <div class="my-auto text-gray-400 group-hover:text-gray-500">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"></path>
+                    </svg>
+                </div>
+            </a>
+
             <!-- transport node console -->
             <a target="_blank" href="/transport-console/index.html" class="group flex bg-white dark:bg-zinc-800 p-2 rounded shadow hover:bg-gray-50 dark:hover:bg-zinc-700">
                 <div class="mr-2">
@@ -42,6 +60,26 @@
                 <div class="my-auto mr-auto dark:text-gray-200">
                     <div class="font-bold">Transport Node Console</div>
                     <div class="text-sm">Configure and monitor RNode transport nodes.</div>
+                </div>
+                <div class="my-auto text-gray-400 group-hover:text-gray-500">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"></path>
+                    </svg>
+                </div>
+            </a>
+
+            <!-- read the holy bible (bundled KJV pdf) -->
+            <a target="_blank" href="/bible/KJV-Bible.pdf" class="group flex bg-white dark:bg-zinc-800 p-2 rounded shadow hover:bg-gray-50 dark:hover:bg-zinc-700">
+                <div class="mr-2">
+                    <div class="flex items-center justify-center size-14 rounded shadow text-white bg-gradient-to-br from-[#1e5aa0] to-[#123a6b]">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-8">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" />
+                        </svg>
+                    </div>
+                </div>
+                <div class="my-auto mr-auto dark:text-gray-200">
+                    <div class="font-bold">Read the Holy Bible</div>
+                    <div class="text-sm">King James Version &middot; available offline.</div>
                 </div>
                 <div class="my-auto text-gray-400 group-hover:text-gray-500">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6">

@@ -21,6 +21,21 @@
 
                     <div class="flex px-2 py-1">
                         <div class="my-auto mr-auto">
+                            <div>LCS Gateway</div>
+                            <div class="text-xs">public.lcs.network:4243</div>
+                        </div>
+                        <div class="ml-2 my-auto">
+                            <button
+                                @click="newInterfaceName='LCS Gateway';newInterfaceType='TCPClientInterface';newInterfaceTargetHost='public.lcs.network';newInterfaceTargetPort='4243'"
+                                type="button"
+                                class="inline-flex items-center gap-x-1 rounded-md bg-gray-500 px-2 py-1 text-sm font-semibold text-white shadow-sm hover:bg-gray-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-500">
+                                <span>Use Interface</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="flex px-2 py-1">
+                        <div class="my-auto mr-auto">
                             <div>RNS Testnet Amsterdam</div>
                             <div class="text-xs">amsterdam.connect.reticulum.network:4965</div>
                         </div>
@@ -168,6 +183,25 @@
                     </div>
 
                     <!-- interface Frequency -->
+                    <!-- LoRa modem preset (matches the presets used by Columba / Meshtastic) -->
+                    <div v-if="newInterfaceType === 'RNodeInterface'" class="mb-2">
+                        <FormLabel class="mb-1">LoRa Modem Preset</FormLabel>
+                        <select v-model="selectedRNodePreset" @change="applyRNodePreset" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-zinc-900 dark:border-zinc-600 dark:text-white dark:focus:ring-blue-600 dark:focus:border-blue-600">
+                            <option :value="null">Custom (set values manually)</option>
+                            <option v-for="preset in rnodePresets" :key="preset.name" :value="preset.name">
+                                {{ preset.name }}{{ preset.note ? ' — ' + preset.note : '' }}
+                            </option>
+                        </select>
+                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            Presets fill in frequency, bandwidth, spreading factor, coding rate and transmit power.
+                            All nodes must use the same preset to hear each other.
+                        </p>
+                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            ⓘ Transmit power defaults to 22 dBm. RAK and LilyGo boards max out at 22 dBm;
+                            Heltec V4 supports up to 28 dBm.
+                        </p>
+                    </div>
+
                     <div v-if="newInterfaceType === 'RNodeInterface'" class="mb-2">
                         <FormLabel class="mb-1">
                             <span>Frequency</span><span v-if="formattedFrequency">: {{ formattedFrequency }}</span>
@@ -870,6 +904,21 @@ export default {
             newInterfaceSpreadingFactor: null,
             newInterfaceCodingRate: null,
 
+            // LoRa modem presets, matching the preset list used by Columba (which mirrors
+            // the Meshtastic presets). Frequency defaults to the US 914.875 MHz slot.
+            // bandwidth is in Hz, codingrate is the 4:N denominator, txpower in dBm.
+            selectedRNodePreset: null,
+            rnodePresets: [
+                { name: "Short Turbo",   frequency: 914875000, bandwidth: 500000, spreadingfactor: 7,  codingrate: 5, txpower: 22, note: null },
+                { name: "Short Fast",    frequency: 914875000, bandwidth: 250000, spreadingfactor: 7,  codingrate: 5, txpower: 22, note: "Best for voice over LoRa" },
+                { name: "Short Slow",    frequency: 914875000, bandwidth: 250000, spreadingfactor: 8,  codingrate: 5, txpower: 22, note: null },
+                { name: "Medium Fast",   frequency: 914875000, bandwidth: 250000, spreadingfactor: 9,  codingrate: 5, txpower: 22, note: null },
+                { name: "Medium Slow",   frequency: 914875000, bandwidth: 250000, spreadingfactor: 10, codingrate: 5, txpower: 22, note: null },
+                { name: "Long Fast",     frequency: 914875000, bandwidth: 250000, spreadingfactor: 11, codingrate: 5, txpower: 22, note: "LCS Recommended" },
+                { name: "Long Moderate", frequency: 914875000, bandwidth: 125000, spreadingfactor: 11, codingrate: 8, txpower: 22, note: null },
+                { name: "Long Slow",     frequency: 914875000, bandwidth: 125000, spreadingfactor: 12, codingrate: 8, txpower: 22, note: null },
+            ],
+
             // Serial, KISS, and AX25KISS options
             newInterfaceSpeed: null,
             newInterfaceDatabits: null,
@@ -1235,6 +1284,32 @@ export default {
             const mhzToHz = this.RNodeMHzValue * 1e6;
             const khzToHz = this.RNodekHzValue * 1e3;
             return ghzToHz + mhzToHz + khzToHz;
+        },
+        applyRNodePreset() {
+
+            // "Custom" selected - leave the current values alone
+            if(this.selectedRNodePreset == null){
+                return;
+            }
+
+            const preset = this.rnodePresets.find((p) => p.name === this.selectedRNodePreset);
+            if(!preset){
+                return;
+            }
+
+            // split the preset frequency (Hz) into the GHz / MHz / kHz inputs
+            const hz = preset.frequency;
+            this.RNodeGHzValue = Math.floor(hz / 1000000000);
+            this.RNodeMHzValue = Math.floor((hz % 1000000000) / 1000000);
+            this.RNodekHzValue = Math.floor((hz % 1000000) / 1000);
+
+            this.newInterfaceBandwidth = preset.bandwidth;
+            this.newInterfaceSpreadingFactor = preset.spreadingfactor;
+            this.newInterfaceCodingRate = preset.codingrate;
+            this.newInterfaceTxpower = preset.txpower;
+
+            this.updateRNodeCalculations();
+
         },
         updateRNodeCalculations() {
             this.calculateRNodeParameters(
