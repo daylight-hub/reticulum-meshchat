@@ -95,16 +95,24 @@ export default class TelephoneAudioBridge {
             // received call audio (int16 PCM) -> schedule for playback
             this.playFrame(event.data);
         };
-        this.ws.onclose = () => this.stop();
-        this.ws.onerror = () => this.stop();
+        // NOTE: do not wire onclose/onerror to stop() until AFTER start() finishes wiring
+        // the mic. Otherwise an early close during the "wait for open" await calls stop(),
+        // which nulls micStream/audioContext, and the code below then crashes on null.
 
-        await new Promise((resolve) => {
+        await new Promise((resolve, reject) => {
             if (this.ws.readyState === WebSocket.OPEN) {
                 resolve();
             } else {
                 this.ws.onopen = () => resolve();
+                this.ws.onerror = () => reject(new Error("audio-bridge websocket failed to open"));
+                this.ws.onclose = () => reject(new Error("audio-bridge websocket closed before opening"));
             }
         });
+
+        // if stop() was called while we were awaiting, bail out cleanly
+        if (!this.running || !this.audioContext || !this.micStream) {
+            return;
+        }
 
         // 4. capture mic -> send PCM frames over the websocket
         this.micSource = this.audioContext.createMediaStreamSource(this.micStream);
@@ -158,6 +166,10 @@ export default class TelephoneAudioBridge {
         mute.gain.value = 0;
         this.processor.connect(mute);
         mute.connect(this.audioContext.destination);
+
+        // now that the mic is fully wired, it's safe to let a later close/error tear down
+        this.ws.onclose = () => this.stop();
+        this.ws.onerror = () => this.stop();
     }
 
     // play a received int16 PCM frame via Web Audio, scheduled back-to-back
