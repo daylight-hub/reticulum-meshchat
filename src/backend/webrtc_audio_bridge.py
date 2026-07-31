@@ -88,13 +88,32 @@ class WebSocketAudioSink(Sink):
             return
         try:
             # LXST delivers a numpy float array (samples, channels) in [-1, 1].
-            # convert to int16 mono PCM bytes for the browser to play.
+            # Different codecs decode at different rates (Opus 48 kHz, Codec2 8 kHz),
+            # so resample to the browser's fixed rate (48 kHz) or the audio plays at the
+            # wrong speed/pitch after a codec switch ("deep and slow" / too fast).
             if np is not None and hasattr(frame, "shape"):
                 arr = frame
                 # downmix to mono if needed
                 if arr.ndim == 2 and arr.shape[1] > 1:
                     arr = arr.mean(axis=1)
-                arr = arr.reshape(-1)
+                arr = arr.reshape(-1).astype(np.float32)
+
+                # figure out the source samplerate for this frame
+                src_rate = None
+                if source is not None:
+                    src_rate = getattr(source, "samplerate", None)
+                if not src_rate or src_rate <= 0:
+                    src_rate = BRIDGE_SAMPLERATE
+
+                # resample to the browser rate if they differ
+                if src_rate != BRIDGE_SAMPLERATE and arr.shape[0] > 1:
+                    n_in = arr.shape[0]
+                    n_out = int(round(n_in * (BRIDGE_SAMPLERATE / float(src_rate))))
+                    if n_out > 1:
+                        x_in = np.linspace(0.0, 1.0, num=n_in, endpoint=False)
+                        x_out = np.linspace(0.0, 1.0, num=n_out, endpoint=False)
+                        arr = np.interp(x_out, x_in, arr).astype(np.float32)
+
                 # float [-1,1] -> int16
                 pcm = np.clip(arr, -1.0, 1.0)
                 pcm = (pcm * INT16_MAX).astype(np.int16)
