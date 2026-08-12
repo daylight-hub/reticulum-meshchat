@@ -95,24 +95,16 @@ export default class TelephoneAudioBridge {
             // received call audio (int16 PCM) -> schedule for playback
             this.playFrame(event.data);
         };
-        // NOTE: do NOT wire onclose/onerror -> stop() yet. If the websocket closes during
-        // the "wait for open" await below, stop() would null micStream/audioContext and the
-        // createMediaStreamSource call would then crash on null. We wire them after setup.
+        this.ws.onclose = () => this.stop();
+        this.ws.onerror = () => this.stop();
 
-        await new Promise((resolve, reject) => {
+        await new Promise((resolve) => {
             if (this.ws.readyState === WebSocket.OPEN) {
                 resolve();
             } else {
                 this.ws.onopen = () => resolve();
-                this.ws.onerror = () => reject(new Error("audio-bridge websocket failed to open"));
-                this.ws.onclose = () => reject(new Error("audio-bridge websocket closed before opening"));
             }
         });
-
-        // if stop() ran while awaiting, or state was torn down, bail out cleanly
-        if (!this.running || !this.audioContext || !this.micStream) {
-            return;
-        }
 
         // 4. capture mic -> send PCM frames over the websocket
         this.micSource = this.audioContext.createMediaStreamSource(this.micStream);
@@ -161,19 +153,17 @@ export default class TelephoneAudioBridge {
 
         this.micSource.connect(this.processor);
         // processor must be connected to destination to run, but we don't want to
-        // hear ourselves; route through a zero-gain node.
-        // IMPORTANT: keep this node referenced on `this`. If it's only a local const it
-        // gets garbage-collected after start() returns, which disconnects the processor
-        // from the destination and the browser stops firing onaudioprocess after the
-        // first buffer (symptom: server logs received=1 then nothing).
+        // hear ourselves; route through a zero-gain node
+        // processor must be connected to destination to run, but we don't want to hear
+        // ourselves; route through a zero-gain node.
+        // IMPORTANT: keep this node on `this`. As a local const it gets garbage-collected
+        // after start() returns, disconnecting the ScriptProcessor from the destination -
+        // the browser then stops firing onaudioprocess after the first buffer (symptom:
+        // server logs "received=1" then silence).
         this.muteNode = this.audioContext.createGain();
         this.muteNode.gain.value = 0;
         this.processor.connect(this.muteNode);
         this.muteNode.connect(this.audioContext.destination);
-
-        // now that the mic is fully wired, it's safe to let a later close/error tear down
-        this.ws.onclose = () => this.stop();
-        this.ws.onerror = () => this.stop();
     }
 
     // play a received int16 PCM frame via Web Audio, scheduled back-to-back

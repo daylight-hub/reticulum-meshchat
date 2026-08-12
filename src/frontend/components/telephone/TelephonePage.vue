@@ -44,22 +44,35 @@
                         </div>
 
                         <!-- settings during connected call -->
-                        <!-- LCS: the in-call codec selector has been removed. Changing the
-                             codec mid-call is unreliable across LXST peers (the receive
-                             pipeline keeps the samplerate it latched at call start, which
-                             makes lower-bandwidth codecs play back deep and slow). Choose
-                             the call quality BEFORE dialling instead. -->
                         <div v-if="activeCall.status === 6" class="mb-4">
 
-                            <!-- call mode: full duplex / half duplex (PTT) -->
+                            <!-- call quality (codec) - switchable mid-call -->
+                            <div class="w-full mb-3">
+                                <label class="block mb-1 text-sm font-medium text-gray-900 dark:text-gray-300">Call Quality</label>
+                                <select v-model="selectedAudioProfileId" @change="switchAudioProfile(selectedAudioProfileId)" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-zinc-900 dark:border-zinc-600 dark:text-white dark:focus:ring-blue-600 dark:focus:border-blue-600">
+                                    <option v-for="audioProfile in audioProfiles" :value="audioProfile.id">{{ audioProfile.name }}</option>
+                                </select>
+                            </div>
+
+                            <!-- call mode toggle: full duplex / half duplex (PTT) -->
                             <div v-if="callModes.length > 0" class="w-full mb-3">
                                 <label class="block mb-1 text-sm font-medium text-gray-900 dark:text-gray-300">Call Mode</label>
-                                <select v-model="selectedCallMode" @change="switchCallMode(selectedCallMode)" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-zinc-900 dark:border-zinc-600 dark:text-white dark:focus:ring-blue-600 dark:focus:border-blue-600">
-                                    <option v-for="callMode in callModes" :value="callMode.id">{{ callMode.name }}</option>
-                                </select>
+                                <div class="flex items-center justify-between rounded-lg border border-gray-300 dark:border-zinc-600 bg-gray-50 dark:bg-zinc-900 p-2.5">
+                                    <div class="mr-3">
+                                        <div class="text-sm font-medium dark:text-white">{{ isHalfDuplex ? "Half Duplex" : "Full Duplex" }}</div>
+                                        <div class="text-xs text-gray-500 dark:text-gray-400">
+                                            {{ isHalfDuplex ? "Push to talk — one side transmits at a time" : "Both sides can talk at once" }}
+                                        </div>
+                                    </div>
+                                    <button type="button" role="switch" :aria-checked="isHalfDuplex" @click="toggleCallMode"
+                                        :class="[ isHalfDuplex ? 'bg-blue-600' : 'bg-gray-300 dark:bg-zinc-600' ]"
+                                        class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                                        <span :class="[ isHalfDuplex ? 'translate-x-5' : 'translate-x-0' ]"
+                                            class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition"></span>
+                                    </button>
+                                </div>
                                 <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                                    Half Duplex uses push-to-talk — only one side transmits at a time, which
-                                    saves bandwidth on slow links like LoRa.
+                                    Half Duplex saves bandwidth on slow links like LoRa.
                                 </p>
                             </div>
 
@@ -212,13 +225,19 @@
                                 <select v-model="selectedAudioProfileId" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-zinc-900 dark:border-zinc-600 dark:text-white dark:focus:ring-blue-600 dark:focus:border-blue-600">
                                     <option v-for="audioProfile in audioProfiles" :value="audioProfile.id">{{ audioProfile.name }}</option>
                                 </select>
-                                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                                    Choose the call quality before dialling — it can't be changed once the call is connected.
-                                </p>
-                                <div v-if="callModes.length > 0" class="mt-2">
-                                    <select v-model="selectedCallMode" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-zinc-900 dark:border-zinc-600 dark:text-white dark:focus:ring-blue-600 dark:focus:border-blue-600">
-                                        <option v-for="callMode in callModes" :value="callMode.id">{{ callMode.name }}</option>
-                                    </select>
+                                <div v-if="callModes.length > 0" class="mt-2 flex items-center justify-between rounded-lg border border-gray-300 dark:border-zinc-600 bg-gray-50 dark:bg-zinc-900 p-2.5">
+                                    <div class="mr-3">
+                                        <div class="text-sm font-medium dark:text-white">{{ isHalfDuplex ? "Half Duplex" : "Full Duplex" }}</div>
+                                        <div class="text-xs text-gray-500 dark:text-gray-400">
+                                            {{ isHalfDuplex ? "Push to talk — best for LoRa" : "Both sides can talk at once" }}
+                                        </div>
+                                    </div>
+                                    <button type="button" role="switch" :aria-checked="isHalfDuplex" @click="togglePreCallMode"
+                                        :class="[ isHalfDuplex ? 'bg-blue-600' : 'bg-gray-300 dark:bg-zinc-600' ]"
+                                        class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                                        <span :class="[ isHalfDuplex ? 'translate-x-5' : 'translate-x-0' ]"
+                                            class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition"></span>
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -744,6 +763,18 @@ export default {
             } catch(e) {
                 console.log(e);
             }
+        },
+
+        // LCS: toggle duplex mode during a connected call (signals the far end)
+        toggleCallMode() {
+            const next = this.isHalfDuplex ? 1 : 2;
+            this.selectedCallMode = next;
+            this.switchCallMode(next);
+        },
+
+        // LCS: toggle duplex mode before dialling (applied when the call connects)
+        togglePreCallMode() {
+            this.selectedCallMode = this.isHalfDuplex ? 1 : 2;
         },
 
         // LCS: switch between Full Duplex and Half Duplex (push-to-talk). LXST signals the

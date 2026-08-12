@@ -88,6 +88,24 @@
                 </div>
             </a>
 
+            <!-- about reticulum - bundled LCS Network guide (LCS) -->
+            <a target="_blank" href="/manual/LCS_Network_Guide.pdf" class="group flex bg-white dark:bg-zinc-800 p-2 rounded shadow hover:bg-gray-50 dark:hover:bg-zinc-700">
+                <div class="mr-2">
+                    <div class="flex items-center justify-center size-14 rounded shadow bg-white p-1">
+                        <img class="w-full h-full object-contain" src="/assets/images/reticulum_logo_512.png" alt="Reticulum" />
+                    </div>
+                </div>
+                <div class="my-auto mr-auto dark:text-gray-200">
+                    <div class="font-bold">About Reticulum</div>
+                    <div class="text-sm">The LCS Network guide to Reticulum, LXMF and LXST.</div>
+                </div>
+                <div class="my-auto text-gray-400 group-hover:text-gray-500">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"></path>
+                    </svg>
+                </div>
+            </a>
+
             <!-- purchase rnode mesh radios (LCS) -->
             <a target="_blank" href="https://lcs.network" class="group flex bg-white dark:bg-zinc-800 p-2 rounded shadow hover:bg-gray-50 dark:hover:bg-zinc-700">
                 <div class="mr-2">

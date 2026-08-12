@@ -108,7 +108,7 @@
                             <option value="PipeInterface">Pipe Interface</option>
                         </select>
                         <FormSubLabel>
-                            Need help? <a class="text-blue-500 underline" href="https://reticulum.network/manual/interfaces.html" target="_blank">Reticulum Docs: Configuring Interfaces</a>
+                            Need help? <button type="button" @click="showInterfaceHelp = true" class="text-blue-500 underline">Choosing an Interface</button>
                         </FormSubLabel>
                     </div>
 
@@ -760,7 +760,7 @@
                                 <option value="boundary">Boundary</option>
                             </select>
                             <FormSubLabel>
-                                This setting requires Transport Mode to be enabled. <a class="text-blue-500 underline" href="https://reticulum.network/manual/interfaces.html#interface-modes" target="_blank">Reticulum Docs: Interface Modes</a>
+                                This setting requires Transport Mode to be enabled. <button type="button" @click="showModesHelp = true" class="text-blue-500 underline">Interface Modes explained</button>
                             </FormSubLabel>
                         </div>
 
@@ -828,6 +828,106 @@
             </div>
 
         </div>
+
+        <!-- LCS: "Choosing an Interface" help dialog -->
+        <div v-if="showInterfaceHelp" @click.self="showInterfaceHelp = false" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+            <div class="bg-white dark:bg-zinc-900 rounded-lg shadow-xl max-w-3xl w-full max-h-[85vh] flex flex-col">
+                <div class="flex items-center justify-between p-4 border-b dark:border-zinc-700">
+                    <h2 class="text-lg font-bold dark:text-white">Choosing an Interface</h2>
+                    <button type="button" @click="showInterfaceHelp = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+                <div class="overflow-y-auto p-4 space-y-3 text-sm dark:text-gray-200">
+
+                    <p>
+                        Interfaces are how MeshChat connects to a Reticulum network — over the internet, your
+                        local network, or radio hardware. You can add as many as you like and mix them freely.
+                        If you're not sure, start with <b>LCS Gateway</b> (under preferred servers) or
+                        <b>Auto Interface</b>.
+                    </p>
+
+                    <div v-for="item in interfaceHelpItems" :key="item.name" class="rounded border dark:border-zinc-700 p-3">
+                        <div class="font-bold">{{ item.name }}</div>
+                        <div class="text-xs italic text-gray-500 dark:text-gray-400 mb-1">{{ item.tagline }}</div>
+                        <div>{{ item.body }}</div>
+                        <div v-if="item.warning" class="mt-1 text-xs text-amber-700 dark:text-amber-400">⚠ {{ item.warning }}</div>
+                    </div>
+
+                    <p class="text-xs text-gray-500 dark:text-gray-400">
+                        Most interfaces also support a <b>mode</b> setting (Full, Gateway, Access Point, Roaming,
+                        Boundary), which controls how announces travel and how paths are found. See
+                        <b>Interface Modes explained</b> under the Mode setting. For a full walkthrough of the LCS
+                        Network, open <b>About Reticulum</b> on the Tools page.
+                    </p>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- LCS: "Interface Modes" help dialog with embedded reference images -->
+        <div v-if="showModesHelp" @click.self="showModesHelp = false" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+            <div class="bg-white dark:bg-zinc-900 rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] flex flex-col">
+                <div class="flex items-center justify-between p-4 border-b dark:border-zinc-700">
+                    <h2 class="text-lg font-bold dark:text-white">Interface Modes</h2>
+                    <button type="button" @click="showModesHelp = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+                <div class="overflow-y-auto p-4 space-y-4 text-sm dark:text-gray-200">
+
+                    <p>
+                        The <b>mode</b> tells Reticulum how to treat the network behind an interface — how
+                        announces propagate, how long paths stay valid, and how paths are discovered. Modes only
+                        matter when Transport Mode is enabled; on an ordinary client, leave interfaces on
+                        <b>Full</b>.
+                    </p>
+
+                    <div>
+                        <div class="font-bold mb-1">Interface modes at a glance</div>
+                        <button type="button" @click="zoomedImage = '/assets/images/interface-modes/interface-modes-table.png'" class="block w-full">
+                            <img src="/assets/images/interface-modes/interface-modes-table.png" alt="Interface modes reference table" class="w-full rounded border dark:border-zinc-700 bg-white cursor-zoom-in" />
+                        </button>
+                        <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">Tap the image to enlarge.</div>
+                    </div>
+
+                    <div>
+                        <div class="font-bold mb-1">Announce propagation rules</div>
+                        <button type="button" @click="zoomedImage = '/assets/images/interface-modes/announce-propagation-rules.png'" class="block w-full">
+                            <img src="/assets/images/interface-modes/announce-propagation-rules.png" alt="Announce propagation rules between interface modes" class="w-full rounded border dark:border-zinc-700 bg-white cursor-zoom-in" />
+                        </button>
+                        <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            Reads from the row (source interface) across to the column (destination interface).
+                            Tap the image to enlarge.
+                        </div>
+                    </div>
+
+                    <div class="rounded border dark:border-zinc-700 p-3 space-y-2">
+                        <div><b>Full</b> — the default. All discovery, meshing and transport is active. Use this unless you have a reason not to.</div>
+                        <div><b>Gateway (gw)</b> — full, plus it resolves unknown paths on behalf of nodes behind it. Put the interface <i>facing your clients</i> in this mode, not the one facing the wider network.</div>
+                        <div><b>Access Point (ap)</b> — stays quiet with no automatic announces and short-lived paths, until someone actually uses it. Good for a wide-area radio interface where users appear briefly.</div>
+                        <div><b>Roaming</b> — for interfaces that physically move relative to the rest of the network, such as the LoRa side of a vehicle-mounted node. Paths expire faster.</div>
+                        <div><b>Boundary</b> — for a link to a network segment very different from your own, such as an internet connection on an otherwise LoRa-based node. Keeps a fast network from swamping a slow one with announces.</div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- LCS: fullscreen image zoom -->
+        <div v-if="zoomedImage" @click="zoomedImage = null" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-2 cursor-zoom-out">
+            <img :src="zoomedImage" alt="Enlarged reference image" class="max-w-full max-h-full object-contain rounded bg-white" />
+            <button type="button" @click.stop="zoomedImage = null" class="absolute top-4 right-4 text-white/80 hover:text-white">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-8">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+
     </div>
 </template>
 
@@ -907,6 +1007,68 @@ export default {
             // LoRa modem presets, matching the preset list used by Columba (which mirrors
             // the Meshtastic presets). Frequency defaults to the US 914.875 MHz slot.
             // bandwidth is in Hz, codingrate is the 4:N denominator, txpower in dBm.
+            // LCS: in-app help dialogs (replaces external Reticulum doc links)
+            showInterfaceHelp: false,
+            showModesHelp: false,
+            zoomedImage: null,
+            interfaceHelpItems: [
+                {
+                    name: "Auto Interface",
+                    tagline: "Easiest option for a local network",
+                    body: "Automatically finds other Reticulum devices on your WiFi or Ethernet. No IP addresses, no setup — just enable it. Works even without a router or DHCP.",
+                    warning: "If your WiFi router has client/AP isolation turned on, discovery is blocked — that's the usual reason it doesn't work. Firewalls may need UDP ports 29716 and 42671 open.",
+                },
+                {
+                    name: "TCP Client Interface",
+                    tagline: "Connect to a server over the internet",
+                    body: "Connects out to a remote Reticulum node you specify by hostname or IP and port. This is how you join the LCS Gateway (public.lcs.network:4243) or public testnets. Reconnects on its own if the link drops. The most common way to get on the wider network.",
+                },
+                {
+                    name: "TCP Server Interface",
+                    tagline: "Let others connect to you",
+                    body: "Listens for incoming connections so other people can link to your node. Useful if you're hosting a gateway or transport node. Many clients can connect to one server at once.",
+                    warning: "You'll usually need a reachable IP address and a forwarded port on your router.",
+                },
+                {
+                    name: "UDP Interface",
+                    tagline: "Broadcast on a local network",
+                    body: "Talks to peers on your local network using UDP broadcast. Auto Interface is easier and performs considerably better for the same job — use UDP only when you need specific ports or addresses, or when Auto Interface won't work in your environment.",
+                },
+                {
+                    name: "I2P Interface",
+                    tagline: "Reachable and private, without a public IP",
+                    body: "Connects over the Invisible Internet Project. You get a persistent, portable address that works even behind a firewall, on a changing IP, or with no public IP at all — and neither end's IP address is exposed. Add peers by their .b32.i2p address. Behaves just like a TCP interface once connected, so it's a drop-in privacy upgrade.",
+                    warning: "Requires an I2P router (i2pd) running on the same machine. The first connection can take a few minutes while I2P finds routes.",
+                },
+                {
+                    name: "RNode Interface",
+                    tagline: "LoRa radio",
+                    body: "Connects an RNode LoRa transceiver for off-grid mesh over radio. Connect by USB serial, over WiFi (tcp://iprnode.local), or Bluetooth (ble://). Set frequency, bandwidth, spreading factor, coding rate and TX power — or just pick an LCS preset, which fills everything in. Every node must use identical settings to hear each other; a mismatch gives silence, not a slow link.",
+                    warning: "Radio spectrum is legally regulated. You are responsible for operating within the rules where you live.",
+                },
+                {
+                    name: "RNode Multi Interface",
+                    tagline: "RNodes with multiple radios",
+                    body: "For RNode hardware with more than one LoRa transceiver, letting each radio be configured separately as its own sub-interface — for example a fast short-range 2.4 GHz radio alongside a long-range 900 MHz one.",
+                },
+                {
+                    name: "Serial Interface",
+                    tagline: "Direct wired link",
+                    body: "Uses a plain serial port to pass data straight through — handy for a wire pair between two machines, or hardware like data radios and laser links. You set port, baud rate, data bits, parity and stop bits.",
+                },
+                {
+                    name: "KISS Interface",
+                    tagline: "Packet radio TNCs and modems",
+                    body: "For packet-radio modems and TNCs that speak KISS, including OpenModem and software soundmodems. Supports periodic station identification for callsign ID.",
+                    warning: "Also legally regulated spectrum — know your local rules. Encrypted business-band use requires an FCC license in the US.",
+                },
+                {
+                    name: "Pipe Interface",
+                    tagline: "Advanced / custom",
+                    body: "Runs any external program as an interface, exchanging packets over its standard input and output. For custom hardware, bridges, or experimental transports. Rarely needed unless you're building something specific.",
+                },
+            ],
+
             selectedRNodePreset: null,
             rnodePresets: [
                 { name: "Short Turbo",   frequency: 914875000, bandwidth: 500000, spreadingfactor: 7,  codingrate: 5, txpower: 22, note: null },
