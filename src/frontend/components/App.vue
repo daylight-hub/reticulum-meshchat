@@ -572,54 +572,55 @@ export default {
             try {
                 json = JSON.parse(message.data);
             } catch(e) {
-                // ignore non-JSON or malformed messages instead of killing the handler
-                console.error("onWebsocketMessage: failed to parse message", e);
+                console.error("onWebsocketMessage: bad message", e);
                 return;
             }
             try {
-                switch(json.type){
-                    case 'config': {
-                        this.config = json.config;
-                        this.displayName = json.config.display_name;
-                        break;
-                    }
-                    case 'announced': {
-                        // we just announced, update config so we can show the new last updated at
-                        this.getConfig();
-                        break;
-                    }
-                    case 'incoming_audio_call': {
-                        this.getTelephoneStatus();
-                        NotificationUtils.showIncomingCallNotification();
-                        this.startRingtone();
-                        break;
-                    }
-                    case 'telephone_ringing': {
-                        this.getTelephoneStatus();
-                        NotificationUtils.showIncomingCallNotification();
-                        this.startRingtone();
-                        break;
-                    }
-                    case 'telephone_call_established': {
-                        this.getTelephoneStatus();
-                        this.stopRingtone();
-                        // LCS: start the browser audio bridge when the backend says to
-                        // (Docker has no server-side mic/speaker). We trust the per-call
-                        // flag from the backend over the possibly-stale app_info isDocker.
-                        if(json.use_browser_audio === true || this.isDocker){
-                            this.startAudioBridge();
-                        }
-                        break;
-                    }
-                    case 'telephone_call_ended': {
-                        this.getTelephoneStatus();
-                        this.stopRingtone();
-                        this.stopAudioBridge();
-                        break;
-                    }
+            switch(json.type){
+                case 'config': {
+                    this.config = json.config;
+                    this.displayName = json.config.display_name;
+                    break;
                 }
+                case 'announced': {
+                    // we just announced, update config so we can show the new last updated at
+                    this.getConfig();
+                    break;
+                }
+                case 'incoming_audio_call': {
+                    // ring FIRST - a notification failure must never stop the ringtone
+                    this.startRingtone();
+                    this.getTelephoneStatus();
+                    try { NotificationUtils.showIncomingCallNotification(); } catch(e) { console.error(e); }
+                    break;
+                }
+                case 'telephone_ringing': {
+                    // ring FIRST - a notification failure must never stop the ringtone
+                    this.startRingtone();
+                    this.getTelephoneStatus();
+                    try { NotificationUtils.showIncomingCallNotification(); } catch(e) { console.error(e); }
+                    break;
+                }
+                case 'telephone_call_established': {
+                    this.getTelephoneStatus();
+                    this.stopRingtone();
+                    // LCS: start the browser audio bridge when the backend says to
+                    // (Docker has no server-side mic/speaker). We trust the per-call
+                    // flag from the backend over the possibly-stale app_info isDocker.
+                    if(json.use_browser_audio === true || this.isDocker){
+                        this.startAudioBridge();
+                    }
+                    break;
+                }
+                case 'telephone_call_ended': {
+                    this.getTelephoneStatus();
+                    this.stopRingtone();
+                    this.stopAudioBridge();
+                    break;
+                }
+            }
             } catch(e) {
-                // never let one message handler error break all future events
+                // never let one message break all future event handling
                 console.error("onWebsocketMessage handler error for type", json && json.type, e);
             }
         },
@@ -948,6 +949,16 @@ export default {
                 };
                 playBurst();
                 this.ringtoneTimer = setInterval(playBurst, 3000);
+                // Browsers may start the context suspended when there has been no recent
+                // user gesture (autoplay policy). If so, play again as soon as it resumes,
+                // otherwise the first burst is silently swallowed.
+                if(ctx.state === "suspended"){
+                    ctx.resume().then(() => {
+                        if(this.ringtoneTimer){
+                            try { playBurst(); } catch(e) { /* ignore */ }
+                        }
+                    }).catch(() => {});
+                }
             } catch(e) {
                 console.error("ringtone error:", e);
             }
