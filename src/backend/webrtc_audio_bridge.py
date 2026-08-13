@@ -343,14 +343,50 @@ def install_bridge_on_telephone(telephone, bridge):
 
     if original_prepare is not None:
         def prepare_wrapper(*args, **kwargs):
-            # inject our sink before LXST would build a LineSink
+            # Inject our sink before LXST would build a LineSink (PulseAudio speaker),
+            # which does not exist in Docker.
             try:
                 if telephone.audio_output is None:
                     telephone.audio_output = bridge.make_sink()
                     RNS.log("WebRTC bridge: speaker sink injected", RNS.LOG_NOTICE)
             except Exception as e:
                 RNS.log(f"WebRTC bridge: speaker inject failed: {e}", RNS.LOG_ERROR)
-            return original_prepare(*args, **kwargs)
+
+            # CRITICAL: this method is called by __reset_dialling_pipelines(), which runs
+            # in __caller_identified() IMMEDIATELY BEFORE signal(STATUS_RINGING). If
+            # anything in here raises, the call never reaches RINGING - the status stays
+            # at AVAILABLE(3), no ringtone plays and no answer button appears. In Docker
+            # the dial-tone ToneSource can fail because there is no audio backend, so we
+            # must swallow errors here rather than let them abort the incoming call.
+            try:
+                return original_prepare(*args, **kwargs)
+            except Exception as e:
+                RNS.log(f"WebRTC bridge: prepare_dialling_pipelines failed (continuing so "
+                        f"the call can still ring): {e}", RNS.LOG_WARNING)
+
+                # Build the minimum receive pipeline ourselves so the call still works.
+                try:
+                    from LXST.Mixer import Mixer
+                    from LXST.Pipeline import Pipeline
+                    from LXST.Codecs import Null
+                    t = telephone
+                    if t.audio_output is None:
+                        t.audio_output = bridge.make_sink()
+                    if getattr(t, "receive_mixer", None) is None:
+                        t.receive_mixer = Mixer(target_frame_ms=t.target_frame_time_ms,
+                                                gain=t.receive_gain)
+                    # no dial tone in Docker - it needs an audio backend we do not have
+                    t.dial_tone = None
+                    if getattr(t, "receive_pipeline", None) is None:
+                        t.receive_pipeline = Pipeline(source=t.receive_mixer,
+                                                      codec=Null(),
+                                                      sink=t.audio_output)
+                    RNS.log("WebRTC bridge: built fallback receive pipeline (no dial tone)",
+                            RNS.LOG_NOTICE)
+                except Exception as inner:
+                    RNS.log(f"WebRTC bridge: fallback receive pipeline failed: {inner}",
+                            RNS.LOG_ERROR)
+                return None
         setattr(telephone, prepare_name, prepare_wrapper)
     else:
         RNS.log("WebRTC bridge: could not find __prepare_dialling_pipelines; "
