@@ -369,6 +369,17 @@ class ReticulumMeshChat:
                 self.audio_bridge.deactivate()
             except Exception:
                 pass
+
+        # LCS: drop the speaker sink so the next call gets a fresh one. LXST does not
+        # always clear audio_output between calls, and reusing a released sink means the
+        # next call silently drops audio frames.
+        if self.is_docker():
+            try:
+                audio_output = getattr(self.telephone, "audio_output", None)
+                if audio_output is not None and getattr(audio_output, "released", False):
+                    self.telephone.audio_output = None
+            except Exception:
+                pass
         AsyncUtils.run_async(self.websocket_broadcast(json.dumps({
             "type": "telephone_call_ended",
         })))

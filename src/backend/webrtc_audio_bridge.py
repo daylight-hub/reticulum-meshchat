@@ -363,10 +363,19 @@ def install_bridge_on_telephone(telephone, bridge):
         def prepare_wrapper(*args, **kwargs):
             # Inject our sink before LXST would build a LineSink (PulseAudio speaker),
             # which does not exist in Docker.
+            #
+            # IMPORTANT: inject when audio_output is missing OR when it is a sink we
+            # already released. LXST does not always clear audio_output between calls,
+            # and a released sink silently drops every frame it is handed - which showed
+            # up as calls that intermittently had no audio. Only replacing on None meant
+            # a stale dead sink got reused for the next call.
             try:
-                if telephone.audio_output is None:
+                existing = telephone.audio_output
+                is_stale = existing is not None and getattr(existing, "released", False)
+                if existing is None or is_stale:
                     telephone.audio_output = bridge.make_sink()
-                    RNS.log("WebRTC bridge: speaker sink injected", RNS.LOG_NOTICE)
+                    RNS.log(f"WebRTC bridge: speaker sink injected"
+                            f"{' (replaced stale sink)' if is_stale else ''}", RNS.LOG_NOTICE)
             except Exception as e:
                 RNS.log(f"WebRTC bridge: speaker inject failed: {e}", RNS.LOG_ERROR)
 
@@ -456,12 +465,24 @@ def install_bridge_on_telephone(telephone, bridge):
                         filter_chain.append(AGC(target_level=-15.0))
                     if getattr(t, "use_echo_cancellation", False) and EchoSuppressor:
                         t.active_call.echo_suppressor = EchoSuppressor()
-                        t.receive_mixer.reference_outs = [t.active_call.echo_suppressor]
                         filter_chain.append(t.active_call.echo_suppressor)
                     t.active_call.filters = filter_chain
 
                     # this injects our speaker sink (audio_output) and builds receive pipeline
                     getattr(t, "_Telephone__prepare_dialling_pipelines")()
+
+                    # Wire the echo suppressor's reference AFTER the receive pipeline is
+                    # built. __prepare_dialling_pipelines can create a NEW receive_mixer,
+                    # so attaching the reference beforehand would bind it to a mixer that
+                    # is then discarded - leaving the suppressor with a dead reference. A
+                    # mis-referenced echo suppressor can cancel the outgoing mic audio,
+                    # which is heard at the far end as silence even while packets flow.
+                    try:
+                        es = getattr(t.active_call, "echo_suppressor", None)
+                        if es is not None and getattr(t, "receive_mixer", None) is not None:
+                            t.receive_mixer.reference_outs = [es]
+                    except Exception as e:
+                        RNS.log(f"WebRTC bridge: could not wire echo reference: {e}", RNS.LOG_WARNING)
 
                     t.active_call.packetizer = Packetizer(t.active_call, failure_callback=getattr(t, "_Telephone__packetizer_failure"))
                     if Profiles and t.active_call.call_mode == Profiles.MODE_HALF_DUPLEX:
