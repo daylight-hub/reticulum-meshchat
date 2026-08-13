@@ -80,6 +80,24 @@ class WebSocketAudioSink(Sink):
         self.samplerate = BRIDGE_SAMPLERATE
         self.channels = BRIDGE_CHANNELS
 
+        # LXST's Telephone.__update_output_buffer_targets() reads and writes these on
+        # whatever object is set as audio_output. Without them it raises
+        # AttributeError: 'WebSocketAudioSink' object has no attribute 'buffer_max_height'
+        # which aborts __prepare_dialling_pipelines - and because that runs immediately
+        # before signal(STATUS_RINGING), the whole incoming call would never ring.
+        # We don't buffer locally (frames go straight out over the websocket and the
+        # browser handles playout timing), so these are just honoured as state.
+        self.buffer_max_height = 5
+        self.autostart_min = 1
+        self.streaming = False
+        self.frame_time = 0.06
+
+    def wait_for_frames(self):
+        # LXST calls this after raising the autostart threshold on a real LineSink, where
+        # it blocks until enough frames are buffered. We stream frames to the browser
+        # immediately and buffer nothing here, so there is nothing to wait for.
+        return
+
     def can_receive(self, from_source=None):
         return not self.released
 
