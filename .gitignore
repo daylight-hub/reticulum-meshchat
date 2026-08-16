@@ -9,3 +9,9 @@ node_modules
 
 # local storage
 storage/
+
+# LCS: patch/bundle staging folders delivered as tarballs.
+# These are working files for applying updates - they must never be committed.
+lcs-*/
+APPLY.md
+APPLY_LCS_BUNDLE.md
