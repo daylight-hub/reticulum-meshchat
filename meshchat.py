@@ -298,6 +298,26 @@ class ReticulumMeshChat:
         self.telephone.set_established_callback(self.on_telephone_call_established)
         self.telephone.set_ended_callback(self.on_telephone_call_ended)
 
+        # LCS: wrap switch_mode so that ANY change of call mode - including one initiated
+        # by the REMOTE party via signalling - restores the transmit path. Without this,
+        # after using push-to-talk in half duplex, going back to full duplex left the
+        # microphone muted, because LXST only unsquelches the packetizer and knows nothing
+        # about the transmit mute the PTT button applied.
+        try:
+            original_switch_mode = self.telephone.switch_mode
+
+            def switch_mode_wrapper(mode=None, from_signalling=False, *args, **kwargs):
+                result = original_switch_mode(mode, from_signalling=from_signalling, *args, **kwargs)
+                try:
+                    self.restore_transmit_for_call_mode(mode)
+                except Exception as e:
+                    RNS.log(f"LCS: could not restore transmit after mode switch: {e}", RNS.LOG_DEBUG)
+                return result
+
+            self.telephone.switch_mode = switch_mode_wrapper
+        except Exception as e:
+            RNS.log(f"LCS: could not wrap switch_mode: {e}", RNS.LOG_WARNING)
+
         # LCS: in Docker there is no microphone or PulseAudio, so LXST's server-side
         # audio can't work. Install the WebSocket audio bridge so the browser provides
         # the mic and speaker instead. Desktop builds keep normal server-side audio.
@@ -356,6 +376,31 @@ class ReticulumMeshChat:
             # doesn't depend on possibly-stale app_info.
             "use_browser_audio": self.is_docker(),
         })))
+
+    # LCS: keep the transmit path consistent with the active call mode.
+    # Full duplex = always transmitting, so the mic must be unmuted and unsquelched.
+    # Half duplex = push-to-talk, so start silent until the PTT button is held.
+    def restore_transmit_for_call_mode(self, call_mode=None):
+        try:
+            if call_mode is None:
+                call_mode = getattr(self.telephone, "active_mode", None)
+
+            active_call = self.telephone.active_call
+            is_half_duplex = (call_mode == 2)
+
+            if is_half_duplex:
+                # start squelched - the PTT button opens it
+                if active_call is not None and hasattr(active_call, "packetizer"):
+                    active_call.packetizer.squelch()
+                self.telephone.mute_transmit(True)
+            else:
+                # full duplex - the mic must be live again
+                if active_call is not None and hasattr(active_call, "packetizer"):
+                    active_call.packetizer.unsquelch()
+                self.telephone.mute_transmit(False)
+                RNS.log("LCS: full duplex - microphone re-enabled", RNS.LOG_DEBUG)
+        except Exception as e:
+            RNS.log(f"restore_transmit_for_call_mode failed: {e}", RNS.LOG_DEBUG)
 
     # handle telephone call ended
     def on_telephone_call_ended(self, caller_identity: RNS.Identity = None):
@@ -716,6 +761,8 @@ class ReticulumMeshChat:
         @routes.get("/api/v1/telephone/switch-call-mode/{call_mode}")
         async def index(request):
             call_mode = int(request.match_info.get("call_mode"))
+            # switch_mode is wrapped in init_telephone() so the transmit path (mute +
+            # squelch) is restored for the new mode, whichever side initiated the change.
             AsyncUtils.run_async(asyncio.to_thread(self.telephone.switch_mode, call_mode))
             return web.json_response({
                 "message": "ok",
