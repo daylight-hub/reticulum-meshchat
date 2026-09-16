@@ -34,6 +34,7 @@ from src.backend.colour_utils import ColourUtils
 from src.backend.interface_config_parser import InterfaceConfigParser
 from src.backend.interface_editor import InterfaceEditor
 from src.backend.lxmf_message_fields import LxmfImageField, LxmfFileAttachmentsField, LxmfFileAttachment, LxmfAudioField
+from src.backend.rns_link_bridge import BridgeConfig, LocalBackend, attach_to_app, run_standalone
 from src.backend.sideband_commands import SidebandCommands
 
 # hack to avoid below error on windows from soundcard/mediafoundation.py in self._record_chunk()
@@ -565,7 +566,7 @@ class ReticulumMeshChat:
         self.reticulum.exit_handler()
         RNS.exit()
 
-    def run(self, host, port, launch_browser: bool):
+    def run(self, host, port, launch_browser: bool, rns_bridge_options: dict = None):
 
         # create route table
         routes = web.RouteTableDef()
@@ -2811,10 +2812,84 @@ class ReticulumMeshChat:
         # create and run web app
         app = web.Application(client_max_size=1024 * 1024 * 50)  # allow uploading files up to 50mb
         app.add_routes(routes)
+
+        # mount the rns link bridge and the microreticulum rnode console.
+        # this has to happen before the catch-all static route below, otherwise
+        # the static resource matches /console and /rns/ws first and 404s them.
+        self.setup_rns_bridge(app, host, rns_bridge_options)
+
         app.add_routes([web.static('/', get_file_path("public/"))])  # serve anything in public folder
         app.on_shutdown.append(self.shutdown)  # need to force close websockets and stop reticulum now
         app.on_startup.append(on_startup)
         web.run_app(app, host=host, port=port)
+
+    # sets up the websocket bridge that lets the microreticulum rnode console
+    # open reticulum links to remote transport nodes through this meshchat
+    # instance, plus the local copy of the console itself.
+    def setup_rns_bridge(self, app, host, rns_bridge_options: dict = None):
+
+        options = rns_bridge_options or {}
+        if options.get("enabled", True) is False:
+            return
+
+        # the console drives reboot, eeprom wipe and radio reconfiguration on
+        # remote nodes, and websockets are not subject to cors, so every page
+        # in every tab can reach this endpoint. the origin allow list below is
+        # what stops that; loopback origins and file:// pages are allowed, and
+        # anything else has to be named explicitly.
+        config = BridgeConfig(
+            token=options.get("token"),
+            allowed_origins=tuple(options.get("allowed_origins") or ()),
+            request_timeout=options.get("request_timeout") or 30.0,
+        )
+
+        # identity matters here: this is the identity presented to the remote
+        # node when the console asks to authenticate, so it needs to be the one
+        # the node operator put in their /provision allow list. using the same
+        # identity meshchat announces means the hash the user already knows is
+        # the hash that gets allowed.
+        def backend_factory():
+            return LocalBackend(identity=self.identity)
+
+        attach_to_app(
+            app,
+            backend_factory=backend_factory,
+            config=config,
+            console_dir=get_file_path("console"),
+        )
+
+        if host not in ["127.0.0.1", "localhost", "::1"] and config.token is None:
+            print("WARNING: the RNS console bridge is reachable from the network "
+                  "because --host is not loopback. Pass --rns-bridge-token to require a token.")
+
+        # a second listener on a fixed port, for consoles opened from disk or
+        # from a hosted copy, where the meshchat port is not known in advance.
+        # bound to loopback regardless of --host.
+        bridge_port = options.get("port")
+        if bridge_port is None:
+            return
+
+        async def start_rns_bridge_listener(app):
+            try:
+                app["rns_bridge_runner"] = await run_standalone(
+                    backend_factory=backend_factory,
+                    config=config,
+                    host="127.0.0.1",
+                    port=bridge_port,
+                )
+                print("RNS console bridge listening on ws://127.0.0.1:{}/ws".format(bridge_port))
+            except Exception as e:
+                # a busy port must not stop meshchat from starting, the bridge
+                # is still available on meshchat's own port at /rns/ws
+                print("failed to start RNS console bridge on port {}: {}".format(bridge_port, e))
+
+        async def stop_rns_bridge_listener(app):
+            runner = app.get("rns_bridge_runner")
+            if runner is not None:
+                await runner.cleanup()
+
+        app.on_startup.append(start_rns_bridge_listener)
+        app.on_cleanup.append(stop_rns_bridge_listener)
 
     # handle announcing
     async def announce(self):
@@ -4408,6 +4483,10 @@ def main():
     parser.add_argument("--host", nargs='?', default="127.0.0.1", type=str, help="The address the web server should listen on.")
     parser.add_argument("--port", nargs='?', default="8000", type=int, help="The port the web server should listen on.")
     parser.add_argument("--headless", action='store_true', help="Web browser will not automatically launch when this flag is passed.")
+    parser.add_argument("--disable-rns-bridge", action='store_true', help="Disables the RNS console bridge used by the microReticulum RNode Console.")
+    parser.add_argument("--rns-bridge-port", nargs='?', default=9337, type=int, help="Port for the fixed loopback RNS console bridge listener. (default: 9337)")
+    parser.add_argument("--rns-bridge-token", type=str, help="Require this token as a ?token= query param on the RNS console bridge WebSocket.")
+    parser.add_argument("--rns-bridge-allow-origin", action='append', help="Allow an extra browser Origin to use the RNS console bridge. Can be passed multiple times.")
     parser.add_argument("--identity-file", type=str, help="Path to a Reticulum Identity file to use as your LXMF address.")
     parser.add_argument("--identity-base64", type=str, help="A base64 encoded Reticulum Identity to use as your LXMF address.")
     parser.add_argument("--generate-identity-file", type=str, help="Generates and saves a new Reticulum Identity to the provided file path and then exits.")
@@ -4476,7 +4555,12 @@ def main():
 
     # init app
     reticulum_meshchat = ReticulumMeshChat(identity, args.storage_dir, args.reticulum_config_dir)
-    reticulum_meshchat.run(args.host, args.port, launch_browser=args.headless is False)
+    reticulum_meshchat.run(args.host, args.port, launch_browser=args.headless is False, rns_bridge_options={
+        "enabled": args.disable_rns_bridge is False,
+        "port": args.rns_bridge_port,
+        "token": args.rns_bridge_token,
+        "allowed_origins": args.rns_bridge_allow_origin,
+    })
 
 
 if __name__ == "__main__":

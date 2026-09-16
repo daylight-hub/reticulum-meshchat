@@ -15,3 +15,5 @@ storage/
 lcs-*/
 APPLY.md
 APPLY_LCS_BUNDLE.md
+
+.venv/

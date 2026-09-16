@@ -28,6 +28,7 @@ setup(
             'include_files': [
                 'package.json', # used to determine app version from python
                 'public/', # static files served by web server
+                'console/', # microreticulum rnode console served at /console
             ],
             # slim down the build by excluding these unused libs
             'excludes': [
