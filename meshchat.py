@@ -2855,15 +2855,16 @@ class ReticulumMeshChat:
             app,
             backend_factory=backend_factory,
             config=config,
-            console_dir=get_file_path("console"),
         )
 
         if host not in ["127.0.0.1", "localhost", "::1"] and config.token is None:
             print("WARNING: the RNS console bridge is reachable from the network "
                   "because --host is not loopback. Pass --rns-bridge-token to require a token.")
 
-        # a second listener on a fixed port, for consoles opened from disk or
-        # from a hosted copy, where the meshchat port is not known in advance.
+        # optional second listener on a fixed port, for a console opened from
+        # disk or from a hosted copy, where meshchat's port is not known in
+        # advance. off by default: the electron app already runs meshchat
+        # itself on 9337, so a second listener there would collide.
         # bound to loopback regardless of --host.
         bridge_port = options.get("port")
         if bridge_port is None:
@@ -4484,7 +4485,7 @@ def main():
     parser.add_argument("--port", nargs='?', default="8000", type=int, help="The port the web server should listen on.")
     parser.add_argument("--headless", action='store_true', help="Web browser will not automatically launch when this flag is passed.")
     parser.add_argument("--disable-rns-bridge", action='store_true', help="Disables the RNS console bridge used by the microReticulum RNode Console.")
-    parser.add_argument("--rns-bridge-port", nargs='?', default=9337, type=int, help="Port for the fixed loopback RNS console bridge listener. (default: 9337)")
+    parser.add_argument("--rns-bridge-port", nargs='?', default=None, type=int, help="Also serve the RNS console bridge on this fixed loopback port. Off by default; the bridge is always available on MeshChat's own port at /rns/ws.")
     parser.add_argument("--rns-bridge-token", type=str, help="Require this token as a ?token= query param on the RNS console bridge WebSocket.")
     parser.add_argument("--rns-bridge-allow-origin", action='append', help="Allow an extra browser Origin to use the RNS console bridge. Can be passed multiple times.")
     parser.add_argument("--identity-file", type=str, help="Path to a Reticulum Identity file to use as your LXMF address.")

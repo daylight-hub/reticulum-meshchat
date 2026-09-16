@@ -35,6 +35,38 @@ by Liam Cottle (MIT licensed — see `LICENSE`).
 - **Purchase link** — "Buy RNode Radios · lcs.network" in the sidebar and Tools.
 - **Version** — reports as LCS MeshChat, and the About page shows the LXST version.
 
+### What's new in v1.8.9
+
+**Remote transport node management over Reticulum.** The Transport Node Console
+in Tools can now reach RNode transport nodes anywhere on the mesh, not just ones
+attached over USB, Bluetooth or the local network.
+
+- **RNS console bridge** (`src/backend/rns_link_bridge.py`) — MeshChat's web
+  server now answers the console's `rns.link.*` WebSocket protocol at `/rns/ws`
+  and turns it into real Reticulum Link + Request traffic aimed at a node's
+  `/provision` handler. It runs on the RNS instance and identity MeshChat
+  already has: no extra daemon, no second identity store, no extra port.
+- **Console auto-connect** — the Transport Node Console finds the bridge by
+  itself. It probes the same origin first, so it works whether the console is
+  opened from the Tools page, from disk, or from a hosted copy, and reports the
+  actual cause when a browser blocks the connection rather than just failing.
+- **Deep links** — the console accepts `?dest=`, `?aspect=`, `?transport=`,
+  `?ws=`, `?port=`, `?token=` and `?identify=0`, so a node can be linked to
+  directly.
+- **Origin allowlist** — WebSockets bypass CORS, so the bridge only accepts
+  loopback origins and `file://` pages by default. `--rns-bridge-token` adds a
+  shared secret, `--rns-bridge-allow-origin` permits a hosted console, and
+  `--disable-rns-bridge` turns the whole thing off.
+
+Over RNS the console exposes Node Status and Transport Config. Logs and Node
+Config still need Serial, Bluetooth or a LAN WebSocket — they rely on legacy
+KISS opcodes that don't survive the Reticulum hop. Nodes must be announcing on
+`rnstransport.remote.management`, and your MeshChat identity hash has to be in
+the node's `/provision` ALLOW_LIST.
+
+See `docs/rns-console-bridge.md` for the protocol details and why
+`attermann/ReticulumAPI` is not a drop-in substitute.
+
 ### Build & deploy
 
 - **Docker** — GitHub Actions builds a multi-arch image on every push to the `lcs`

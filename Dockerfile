@@ -39,7 +39,6 @@ COPY --from=build-frontend /src/public public
 COPY *.py .
 COPY src/__init__.py ./src/__init__.py
 COPY src/backend ./src/backend
-COPY console ./console
 COPY *.json .
 
 CMD ["python", "meshchat.py", "--host=0.0.0.0", "--reticulum-config-dir=/config/.reticulum", "--storage-dir=/config/.meshchat", "--headless"]

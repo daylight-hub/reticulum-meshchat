@@ -794,50 +794,17 @@ def _health(_request: web.Request) -> web.Response:
     return web.json_response({"status": "ok", "service": "meshchat-rns-bridge"})
 
 
-def mount_console(app: web.Application, console_dir: str,
-                  route: str = "/console") -> None:
-    """
-    Serve the RNode Console out of `console_dir` as plain static files.
-
-    The console is self-contained: endpoint discovery is inlined in the HTML,
-    so nothing is rewritten on the way out and the file behaves identically
-    whether it is served from here, opened from disk or hosted elsewhere.
-    """
-    route = route.rstrip("/")
-    index_path = os.path.join(console_dir, "index.html")
-
-    async def serve_index(_request: web.Request) -> web.Response:
-        if not os.path.isfile(index_path):
-            return web.Response(
-                status=404,
-                content_type="text/html",
-                text=("<h1>No console installed</h1><p>Place the RNode Console "
-                      "HTML file at <code>console/index.html</code> and reload.</p>"),
-            )
-        return web.FileResponse(index_path, headers={"Cache-Control": "no-store"})
-
-    async def redirect_to_slash(_request: web.Request) -> web.Response:
-        raise web.HTTPFound(route + "/")
-
-    app.router.add_get(route, redirect_to_slash)
-    app.router.add_get(route + "/", serve_index)
-    if os.path.isdir(console_dir):
-        app.router.add_static(route, console_dir)
-
-
 def attach_to_app(app: web.Application,
                   backend_factory: Callable[[], Backend],
                   config: Optional[BridgeConfig] = None,
-                  path: str = DEFAULT_BRIDGE_PATH,
-                  console_dir: Optional[str] = None,
-                  console_route: str = "/console") -> RnsLinkBridge:
+                  path: str = DEFAULT_BRIDGE_PATH) -> RnsLinkBridge:
     """
     Mount the bridge on MeshChat's existing aiohttp application.
 
-    This is the primary deployment: the bridge lives on the same origin and
-    port as the MeshChat web UI, so a console served from console_dir can
-    connect with a relative URL and there is no TLS, no mixed content and no
-    local-network-access permission involved in any browser.
+    The bridge lives on the same origin and port as the MeshChat web UI, so the
+    transport console served from src/frontend/public/transport-console/
+    connects with a relative URL: no TLS, no mixed content and no
+    local-network-access permission in any browser.
 
     Must be registered BEFORE MeshChat's catch-all `web.static('/', 'public/')`
     route, otherwise the static resource swallows /console and /rns/ws.
@@ -845,8 +812,6 @@ def attach_to_app(app: web.Application,
     bridge = RnsLinkBridge(backend_factory, config)
     app.router.add_get(path, bridge.handle)
     app.router.add_get(path.rsplit("/", 1)[0] + "/health", _health)
-    if console_dir:
-        mount_console(app, console_dir, console_route)
     return bridge
 
 
