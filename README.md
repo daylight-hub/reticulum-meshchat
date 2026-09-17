@@ -35,7 +35,7 @@ by Liam Cottle (MIT licensed — see `LICENSE`).
 - **Purchase link** — "Buy RNode Radios · lcs.network" in the sidebar and Tools.
 - **Version** — reports as LCS MeshChat, and the About page shows the LXST version.
 
-### What's new in v1.8.9
+### What's new in v1.9.0
 
 **Remote transport node management over Reticulum.** The Transport Node Console
 in Tools can now reach RNode transport nodes anywhere on the mesh, not just ones
@@ -50,6 +50,14 @@ attached over USB, Bluetooth or the local network.
   itself. It probes the same origin first, so it works whether the console is
   opened from the Tools page, from disk, or from a hosted copy, and reports the
   actual cause when a browser blocks the connection rather than just failing.
+- **Setup instructions** — selecting the LCS MeshChat transport now explains the
+  one-time wired step: add your Identity Hash to the node's *Remote management
+  allowed* list over USB-C serial before the node will answer you over the mesh.
+- **Modem parameter warning** — Transport Config warns, when the node is reached
+  over Reticulum, that changing frequency, bandwidth, SF or CR makes the node
+  stop matching the mesh that carried the command, with no path left to undo it.
+  Modem parameters need a USB-C serial connection.
+- **Naming** — the console's transport is labelled "RNS (via LCS MeshChat)".
 - **Deep links** — the console accepts `?dest=`, `?aspect=`, `?transport=`,
   `?ws=`, `?port=`, `?token=` and `?identify=0`, so a node can be linked to
   directly.
