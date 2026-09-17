@@ -35,6 +35,27 @@ by Liam Cottle (MIT licensed — see `LICENSE`).
 - **Purchase link** — "Buy RNode Radios · lcs.network" in the sidebar and Tools.
 - **Version** — reports as LCS MeshChat, and the About page shows the LXST version.
 
+### What's new in v1.9.1
+
+**Blackhole management.** Conversations now have a **Block Contact** action in the
+three-dot menu, and Settings gains a Blackhole section.
+
+- **Block Contact** resolves the peer's destination hash to its identity hash and
+  adds it to Reticulum's blackhole list — the same list `rnpath -B` writes.
+  Announces from that identity are dropped and this node stops routing traffic to
+  any of its destinations. It takes effect immediately.
+- **Blocked list** in Settings shows everything blocked, whether you added it or a
+  subscribed source did, with expiry and reason, and lets you unblock.
+- **Publish** your list so other nodes can subscribe to it, served at
+  `rnstransport.info.blackhole`.
+- **Subscribe** to lists published by transport instances you trust, with a
+  configurable update interval.
+
+Blocking is identity-scoped and applies to your own network segments only. There is
+no way to block anyone globally in Reticulum, and other nodes can still carry their
+traffic. Publish and subscribe settings are read by Reticulum at startup, so those
+need a restart; blocking and unblocking do not.
+
 ### What's new in v1.9.0
 
 **Remote transport node management over Reticulum.** The Transport Node Console

@@ -35,6 +35,7 @@ from src.backend.interface_config_parser import InterfaceConfigParser
 from src.backend.interface_editor import InterfaceEditor
 from src.backend.lxmf_message_fields import LxmfImageField, LxmfFileAttachmentsField, LxmfFileAttachment, LxmfAudioField
 from src.backend.rns_link_bridge import BridgeConfig, LocalBackend, attach_to_app, run_standalone
+from src.backend.blackhole import BlackholeManager
 from src.backend.sideband_commands import SidebandCommands
 
 # hack to avoid below error on windows from soundcard/mediafoundation.py in self._record_chunk()
@@ -2810,6 +2811,69 @@ class ReticulumMeshChat:
                     print("failed to launch web browser")
 
         # create and run web app
+        # blackhole management
+        # blocking works on identity hashes and applies to this node's own
+        # network segments only, exactly as rnpath -B/-U/-b does
+        @routes.get("/api/v1/blackhole")
+        async def index(request):
+            manager = self.get_blackhole_manager()
+            return web.json_response({
+                "blackholed": manager.list(),
+                "config": manager.get_config(),
+            })
+
+        @routes.post("/api/v1/blackhole")
+        async def index(request):
+
+            data = await request.json()
+
+            # duration arrives in hours, matching rnpath --duration
+            until = None
+            duration_hours = data.get("duration_hours")
+            if duration_hours is not None and str(duration_hours).strip() != "":
+                try:
+                    until = time.time() + (float(duration_hours) * 3600)
+                except (TypeError, ValueError):
+                    return web.json_response({"message": "duration_hours must be a number"}, status=422)
+
+            try:
+                result = self.get_blackhole_manager().block(
+                    identity_hash=data.get("identity_hash"),
+                    destination_hash=data.get("destination_hash"),
+                    reason=data.get("reason"),
+                    until=until,
+                )
+            except ValueError as e:
+                return web.json_response({"message": str(e)}, status=422)
+
+            return web.json_response(result)
+
+        @routes.delete("/api/v1/blackhole/{identity_hash}")
+        async def index(request):
+            try:
+                result = self.get_blackhole_manager().unblock(
+                    identity_hash=request.match_info.get("identity_hash", ""))
+            except ValueError as e:
+                return web.json_response({"message": str(e)}, status=422)
+            return web.json_response(result)
+
+        @routes.get("/api/v1/blackhole/config")
+        async def index(request):
+            return web.json_response({"config": self.get_blackhole_manager().get_config()})
+
+        @routes.patch("/api/v1/blackhole/config")
+        async def index(request):
+            data = await request.json()
+            try:
+                config = self.get_blackhole_manager().set_config(
+                    publish_blackhole=data.get("publish_blackhole"),
+                    blackhole_sources=data.get("blackhole_sources"),
+                    blackhole_update_interval=data.get("blackhole_update_interval"),
+                )
+            except ValueError as e:
+                return web.json_response({"message": str(e)}, status=422)
+            return web.json_response({"config": config})
+
         app = web.Application(client_max_size=1024 * 1024 * 50)  # allow uploading files up to 50mb
         app.add_routes(routes)
 
@@ -2822,6 +2886,13 @@ class ReticulumMeshChat:
         app.on_shutdown.append(self.shutdown)  # need to force close websockets and stop reticulum now
         app.on_startup.append(on_startup)
         web.run_app(app, host=host, port=port)
+
+    # blackhole manager, created on first use so it always wraps the live
+    # reticulum instance rather than a copy captured at startup
+    def get_blackhole_manager(self):
+        if getattr(self, "blackhole_manager", None) is None:
+            self.blackhole_manager = BlackholeManager(self.reticulum)
+        return self.blackhole_manager
 
     # sets up the websocket bridge that lets the microreticulum rnode console
     # open reticulum links to remote transport nodes through this meshchat
