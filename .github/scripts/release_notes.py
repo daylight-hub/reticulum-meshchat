@@ -8,7 +8,12 @@ released, and appends the commits since the previous tag. Falls back to just the
 commit list if the README has no matching section, so a release never ends up
 with an empty body.
 
-Usage:  python .github/scripts/release_notes.py [tag] > RELEASE_NOTES.md
+Usage:  python .github/scripts/release_notes.py [tag] --output RELEASE_NOTES.md
+
+Always writes UTF-8. The README contains characters outside cp1252 (arrows, em
+dashes), and Python on the Windows runner defaults to cp1252 for stdout, so
+redirecting output there fails. Writing the file directly avoids depending on
+the console encoding at all.
 """
 
 import json
@@ -86,8 +91,25 @@ def commit_list(current_tag):
     return "\n".join(lines[:60]), previous
 
 
+def parse_args(argv):
+    tag = None
+    output = None
+    index = 0
+    while index < len(argv):
+        arg = argv[index]
+        if arg in ("-o", "--output"):
+            index += 1
+            output = argv[index] if index < len(argv) else None
+        elif arg.startswith("--output="):
+            output = arg.split("=", 1)[1]
+        elif tag is None:
+            tag = arg
+        index += 1
+    return tag or os.environ.get("RELEASE_TAG", ""), output
+
+
 def main():
-    tag = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("RELEASE_TAG", "")
+    tag, output = parse_args(sys.argv[1:])
     version = (tag or "").lstrip("v") or package_version()
 
     parts = []
@@ -104,7 +126,19 @@ def main():
     if not parts:
         parts.append("No release notes were generated for this build.")
 
-    sys.stdout.write("\n\n".join(parts) + "\n")
+    body = "\n\n".join(parts) + "\n"
+
+    if output:
+        with open(output, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(body)
+        return
+
+    # no output file given, so make stdout cope with non-cp1252 characters
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except AttributeError:
+        pass
+    sys.stdout.write(body)
 
 
 if __name__ == "__main__":

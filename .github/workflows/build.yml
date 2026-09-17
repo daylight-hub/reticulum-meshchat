@@ -79,7 +79,7 @@ jobs:
         run: npm run dist
       - name: Generate release notes
         shell: bash
-        run: python .github/scripts/release_notes.py "${{ env.RELEASE_TAG }}" > RELEASE_NOTES.md
+        run: python .github/scripts/release_notes.py "${{ env.RELEASE_TAG }}" --output RELEASE_NOTES.md
 
       - name: Create / update Release
         uses: ncipollo/release-action@v1
@@ -140,7 +140,7 @@ jobs:
           done
       - name: Generate release notes
         shell: bash
-        run: python .github/scripts/release_notes.py "${{ env.RELEASE_TAG }}" > RELEASE_NOTES.md
+        run: python .github/scripts/release_notes.py "${{ env.RELEASE_TAG }}" --output RELEASE_NOTES.md
 
       - name: Create / update Release
         uses: ncipollo/release-action@v1
@@ -177,7 +177,7 @@ jobs:
         run: npm run dist
       - name: Generate release notes
         shell: bash
-        run: python .github/scripts/release_notes.py "${{ env.RELEASE_TAG }}" > RELEASE_NOTES.md
+        run: python .github/scripts/release_notes.py "${{ env.RELEASE_TAG }}" --output RELEASE_NOTES.md
 
       - name: Create / update Release
         uses: ncipollo/release-action@v1
