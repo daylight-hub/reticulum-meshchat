@@ -13,6 +13,22 @@
                 globally, and other nodes can still carry their traffic.
             </div>
 
+            <!-- block by identity hash -->
+            <div class="p-2">
+                <label class="text-sm font-medium text-gray-900 dark:text-gray-100">Block an identity</label>
+                <div class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                    Paste an identity hash to block it directly. No announce or prior contact
+                    is needed &mdash; Reticulum blocks identities, so knowing the hash is enough.
+                    The <span class="font-mono">&lt;angle bracket&gt;</span> form RNS prints is
+                    accepted, as is colon-delimited hex.
+                </div>
+                <div class="mt-2 flex gap-2">
+                    <input v-model="newBlock" @keyup.enter="blockIdentity" type="text" placeholder="identity hash" class="grow bg-gray-50 dark:bg-zinc-700 border border-gray-300 dark:border-zinc-600 text-gray-900 dark:text-gray-100 text-sm rounded p-2 font-mono">
+                    <input v-model="newBlockReason" type="text" placeholder="reason (optional)" class="w-48 bg-gray-50 dark:bg-zinc-700 border border-gray-300 dark:border-zinc-600 text-gray-900 dark:text-gray-100 text-sm rounded p-2">
+                    <button @click="blockIdentity" type="button" class="shrink-0 bg-blue-500 hover:bg-blue-400 text-white rounded px-3 text-sm">Block</button>
+                </div>
+            </div>
+
             <!-- blocked list -->
             <div class="p-2">
                 <div class="flex justify-between items-center">
@@ -53,9 +69,10 @@
                     Lets other nodes subscribe to your list. They fetch it from
                     <span class="font-mono">rnstransport.info.blackhole</span>.
                     <span v-if="config.identity_hash">
-                        Your transport identity is
+                        Your <em>transport instance</em> identity is
                         <span class="font-mono break-all">{{ config.identity_hash }}</span> &mdash;
-                        that is what subscribers add as a source.
+                        that is what subscribers add as a source. It is not your
+                        MeshChat identity, which is a different key.
                     </span>
                 </div>
             </div>
@@ -112,6 +129,8 @@ export default {
                 identity_hash: null,
             },
             newSource: "",
+            newBlock: "",
+            newBlockReason: "",
             requiresRestart: false,
         };
     },
@@ -141,6 +160,26 @@ export default {
                 DialogUtils.alert(e.response?.data?.message ?? "Failed to save blackhole settings.");
                 await this.load();
             }
+        },
+        async blockIdentity() {
+
+            const identityHash = this.newBlock.trim().toLowerCase();
+            if(identityHash === ""){
+                return;
+            }
+
+            try {
+                await window.axios.post("/api/v1/blackhole", {
+                    identity_hash: identityHash,
+                    reason: this.newBlockReason.trim() !== "" ? this.newBlockReason.trim() : null,
+                });
+                this.newBlock = "";
+                this.newBlockReason = "";
+                await this.load();
+            } catch(e) {
+                DialogUtils.alert(e.response?.data?.message ?? "Failed to block identity.");
+            }
+
         },
         async addSource() {
             const source = this.newSource.trim().toLowerCase();

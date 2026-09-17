@@ -94,6 +94,8 @@ export default {
                 "",
                 "This only applies to your own network segments. It does not block them",
                 "globally, and other nodes can still carry their traffic.",
+                "",
+                "Blocking is permanent until you remove it in Settings.",
             ].join("\n"));
 
             if(!confirmed){

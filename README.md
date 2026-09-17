@@ -35,6 +35,24 @@ by Liam Cottle (MIT licensed — see `LICENSE`).
 - **Purchase link** — "Buy RNode Radios · lcs.network" in the sidebar and Tools.
 - **Version** — reports as LCS MeshChat, and the About page shows the LXST version.
 
+### What's new in v1.9.2
+
+- **Block an identity directly** — Settings → Blackhole takes an identity hash with
+  an optional reason. No announce or prior contact is needed, since Reticulum blocks
+  identities rather than destinations. The `<angle bracket>` form RNS prints is
+  accepted, as is colon-delimited hex.
+- **Block Contact no longer depends on a recent announce** — it resolves the peer's
+  identity from RNS's persisted known-destinations table, then from MeshChat's own
+  announce records, and finally by requesting a path so the announce is re-sent.
+  It only fails if the destination has never been heard from at all, and says to
+  paste the identity hash directly if so.
+- **Release notes in the draft release** — the build workflow now generates the
+  release body from this README's "What's new" section for the version being built,
+  followed by the commits since the previous tag.
+- **Clearer subscription wording** — the hash a subscriber adds as a source is the
+  publisher's *transport instance* identity, which is a different key from your
+  MeshChat identity.
+
 ### What's new in v1.9.1
 
 **Blackhole management.** Conversations now have a **Block Contact** action in the

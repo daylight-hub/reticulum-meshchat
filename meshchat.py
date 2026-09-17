@@ -2836,13 +2836,24 @@ class ReticulumMeshChat:
                 except (TypeError, ValueError):
                     return web.json_response({"message": "duration_hours must be a number"}, status=422)
 
+            manager = self.get_blackhole_manager()
+
             try:
-                result = self.get_blackhole_manager().block(
+
+                # resolve the identity first, asking the network for an announce if
+                # it is not already known locally, then block the identity itself
+                identity_hash = await manager.resolve_identity_hash_async(
                     identity_hash=data.get("identity_hash"),
                     destination_hash=data.get("destination_hash"),
+                    request_timeout=float(data.get("request_timeout", 15)),
+                )
+
+                result = manager.block(
+                    identity_hash=identity_hash.hex(),
                     reason=data.get("reason"),
                     until=until,
                 )
+
             except ValueError as e:
                 return web.json_response({"message": str(e)}, status=422)
 
@@ -2891,8 +2902,18 @@ class ReticulumMeshChat:
     # reticulum instance rather than a copy captured at startup
     def get_blackhole_manager(self):
         if getattr(self, "blackhole_manager", None) is None:
-            self.blackhole_manager = BlackholeManager(self.reticulum)
+            self.blackhole_manager = BlackholeManager(
+                self.reticulum,
+                identity_hash_lookup=self.find_identity_hash_for_destination,
+            )
         return self.blackhole_manager
+
+    # every announce meshchat has ever seen is stored with the identity hash that
+    # sent it, so a peer can be resolved without asking the network at all
+    def find_identity_hash_for_destination(self, destination_hash):
+        announce = database.Announce.get_or_none(
+            database.Announce.destination_hash == destination_hash)
+        return announce.identity_hash if announce is not None else None
 
     # sets up the websocket bridge that lets the microreticulum rnode console
     # open reticulum links to remote transport nodes through this meshchat

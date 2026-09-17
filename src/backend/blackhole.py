@@ -1,3 +1,4 @@
+import asyncio
 import time
 
 import RNS
@@ -24,8 +25,12 @@ class BlackholeManager:
     they can say so.
     """
 
-    def __init__(self, reticulum):
+    def __init__(self, reticulum, identity_hash_lookup=None):
         self.reticulum = reticulum
+        # optional callable taking a destination hash hex string and returning an
+        # identity hash hex string, used to resolve peers from the host app's own
+        # records before going anywhere near the network
+        self.identity_hash_lookup = identity_hash_lookup
 
     # -- helpers -----------------------------------------------------------
 
@@ -33,7 +38,12 @@ class BlackholeManager:
     def _hash_from_hex(value, what="hash"):
         if value is None:
             raise ValueError(f"missing {what}")
-        value = str(value).strip().lower().replace("<", "").replace(">", "")
+        value = str(value).strip().lower()
+        # accept whatever RNS prints or a user pastes: <eef5..>, eef5.., ee:f5:..
+        for junk in ["<", ">", " ", ":", "-", "_"]:
+            value = value.replace(junk, "")
+        if value.startswith("0x"):
+            value = value[2:]
         expected = RNS.Reticulum.TRUNCATED_HASHLENGTH // 8
         try:
             raw = bytes.fromhex(value)
@@ -44,13 +54,75 @@ class BlackholeManager:
         return raw
 
     def _identity_hash_for_destination(self, destination_hash):
-        identity = RNS.Identity.recall(destination_hash)
-        if identity is None:
+        """
+        Blocking works on identity hashes, and a destination hash cannot be
+        reversed to one, so the identity has to come from somewhere. Try every
+        local source before deciding it is unknown.
+        """
+        resolved = self._lookup_local(destination_hash)
+        if resolved is None:
             raise ValueError(
-                "no announce has been received from this peer yet, so its identity "
-                "is not known and it can not be blocked"
+                "the identity behind this destination is not known locally. Blocking "
+                "needs the identity hash, which can not be derived from a destination "
+                "hash alone."
             )
-        return identity.hash
+        return resolved
+
+    def _lookup_local(self, destination_hash):
+        # RNS keeps a persisted table of known destinations, so this succeeds for
+        # any peer ever heard from, not just recently
+        identity = RNS.Identity.recall(destination_hash)
+        if identity is not None:
+            return identity.hash
+
+        # then whatever the host app recorded itself
+        if self.identity_hash_lookup is not None:
+            try:
+                found = self.identity_hash_lookup(destination_hash.hex())
+            except Exception:
+                found = None
+            if found:
+                try:
+                    return self._hash_from_hex(found, "identity_hash")
+                except ValueError:
+                    return None
+
+        return None
+
+    async def resolve_identity_hash_async(self, identity_hash=None,
+                                          destination_hash=None,
+                                          request_timeout=15.0):
+        """
+        Same as resolve_identity_hash, but asks the network for the identity when
+        it is not known locally. A path request causes the destination's announce
+        to be re-sent, which carries the public key, exactly as rnid -R does.
+        """
+        if identity_hash:
+            return self._hash_from_hex(identity_hash, "identity_hash")
+
+        if not destination_hash:
+            raise ValueError("provide identity_hash or destination_hash")
+
+        raw = self._hash_from_hex(destination_hash, "destination_hash")
+
+        resolved = self._lookup_local(raw)
+        if resolved is not None:
+            return resolved
+
+        if request_timeout and request_timeout > 0:
+            RNS.Transport.request_path(raw)
+            deadline = time.time() + request_timeout
+            while time.time() < deadline:
+                await asyncio.sleep(0.25)
+                resolved = self._lookup_local(raw)
+                if resolved is not None:
+                    return resolved
+
+        raise ValueError(
+            "could not learn the identity for this destination. It has not been "
+            "heard from, and no announce arrived after requesting a path. Paste "
+            "the identity hash directly under Settings to block it."
+        )
 
     def resolve_identity_hash(self, identity_hash=None, destination_hash=None):
         """Accept either form from the API and return identity hash bytes."""
@@ -194,10 +266,12 @@ class BlackholeManager:
                 source = str(source).strip()
                 if not source:
                     continue
-                # validate before writing, a bad hash makes RNS refuse to start
-                self._hash_from_hex(source, "blackhole source identity hash")
-                if source.lower() not in cleaned:
-                    cleaned.append(source.lower())
+                # validate AND normalise before writing: a bad hash, or one still
+                # wrapped in the angle brackets RNS prints, makes RNS refuse to start
+                normalised = self._hash_from_hex(
+                    source, "blackhole source identity hash").hex()
+                if normalised not in cleaned:
+                    cleaned.append(normalised)
             section["blackhole_sources"] = cleaned
 
         if blackhole_update_interval is not None:
