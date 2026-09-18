@@ -3,8 +3,8 @@
 """
 Builds the body for the draft GitHub release.
 
-Takes the "What's new in vX.Y.Z" section out of README.md for the version being
-released, and appends the commits since the previous tag. Falls back to just the
+Takes the "What's new in vX.Y.Z" section out of docs/CHANGELOG.md for the version
+being released, and appends the commits since the previous tag. Falls back to just the
 commit list if the README has no matching section, so a release never ends up
 with an empty body.
 
@@ -35,14 +35,26 @@ def package_version():
         return None
 
 
+# docs/CHANGELOG.md holds the version history. README.md is checked as a fallback
+# so older tags, whose notes still lived in the README, keep generating a body.
+NOTES_FILES = ("docs/CHANGELOG.md", "README.md")
+
+
 def readme_section(version):
     """Pull '### What's new in vX.Y.Z' up to the next heading of the same level."""
     if not version:
         return None
-    try:
-        with open(os.path.join(repo_root(), "README.md"), encoding="utf-8") as fh:
-            readme = fh.read()
-    except OSError:
+    readme = None
+    for candidate in NOTES_FILES:
+        try:
+            with open(os.path.join(repo_root(), candidate), encoding="utf-8") as fh:
+                text = fh.read()
+        except OSError:
+            continue
+        if ("What's new in v" + version) in text:
+            readme = text
+            break
+    if readme is None:
         return None
 
     heading = re.compile(

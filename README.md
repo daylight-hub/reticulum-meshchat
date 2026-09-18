@@ -16,51 +16,74 @@ Reticulum MeshChat, with additional features for LCS network deployments. It is
 built on the open-source [Reticulum MeshChat](https://github.com/liamcottle/reticulum-meshchat)
 by Liam Cottle (MIT licensed — see `LICENSE`).
 
-### LCS additions
+### Features
 
-- **Branding** — LCS logo throughout, "LCS MeshChat" naming, brand accent styling.
-- **Add LCS Interfaces** — a header button (all builds) opens a dialog to add LCS
-  network interfaces to Reticulum. You choose which to add, whether to enable them
-  immediately, and can auto-detect a connected RNode's serial port:
+**Branding and navigation**
+
+- LCS logo throughout, "LCS MeshChat" naming, brand accent styling.
+- **Add LCS Interfaces** — a header button opens a dialog to add LCS network
+  interfaces to Reticulum. Choose which to add, whether to enable them
+  immediately, and auto-detect a connected RNode's serial port:
   - **LCS Gateway Client** — `public.lcs.network` (TCP, gateway mode)
   - **IP RNode** — `iprnode.local:4545` (TCP, network-attached RNode)
   - **RNode LoRa** — direct serial LoRa radio (914.875 MHz, SF11), added disabled
     unless a serial port is provided.
-- **Restart button** (Docker builds only) — restarts the app process; relies on the
-  container's `restart: unless-stopped` policy. Does not require the Docker socket.
-- **Back button** — navigates to the previous page.
-- **Incoming call ringtone** — a generated tone plays while a call is ringing.
-- **Transport Node Console** — replaces the RNode Flasher tile in Tools; a
-  self-contained console for configuring/monitoring RNode transport nodes.
-- **Purchase link** — "Buy RNode Radios · lcs.network" in the sidebar and Tools.
-- **Version** — reports as LCS MeshChat, and the About page shows the LXST version.
+- **Restart button** (Docker builds only) — restarts the app process, relying on
+  the container's `restart: unless-stopped` policy. Does not need the Docker socket.
+- **Back button**, **incoming call ringtone**, and a **Buy RNode Radios** link in
+  the sidebar and Tools.
+- Reports as LCS MeshChat, and the About page shows the LXST version.
 
-### What's new in v1.9.4
+**Transport Node Console** (Tools → Transport Console)
 
-- **Reverse proxy fix** — the same-origin check now tolerates a proxy that strips
-  the port from the `Host` header, which is what nginx's `proxy_set_header Host
-  $host` does. v1.9.3 refused those connections with a 403.
-- **Docker and reverse proxy documentation** — see the Docker section above and
-  `docs/REVERSE_PROXY_SETUP.md`.
-- **Corrected code signing guidance** in `docs/code-signing.md`: EV certificates
-  have not granted instant SmartScreen reputation since 2024.
+- Self-contained console for configuring and monitoring RNode transport nodes over
+  Serial, Bluetooth, a LAN WebSocket, or Reticulum.
+- **Remote management over Reticulum** — MeshChat answers the console's
+  `rns.link.*` protocol at `/rns/ws` and turns it into Reticulum Link and Request
+  traffic aimed at a node's `/provision` handler. It runs on the RNS instance and
+  identity MeshChat already has: no sidecar daemon, no second identity store, no
+  extra port.
+- **Auto-connect** — the console finds the bridge itself, probing same-origin
+  first, so it works from Tools, from disk, or from a hosted copy. When a browser
+  blocks the connection it names the actual cause.
+- **Setup guidance** — selecting the LCS MeshChat transport explains the one-time
+  wired step of adding your Identity Hash to the node's remote-management allow
+  list.
+- **Frequency presets** on both Node Config and Transport Config, with the same
+  labels as the app's RNode interface dropdown. Selecting one on a node reached
+  over the mesh asks for confirmation first and warns that saving will take the
+  node off the mesh permanently.
+- **Deep links** — `?dest=`, `?aspect=`, `?transport=`, `?ws=`, `?port=`,
+  `?token=`, `?identify=0`.
+- Over Reticulum the console exposes Node Status and Transport Config. Logs and
+  Node Config need Serial, Bluetooth or a LAN WebSocket, because they rely on
+  legacy KISS frames that do not cross the Reticulum hop.
 
-### What's new in v1.9.3
+**Blackhole management**
 
-- **Works behind a reverse proxy** — the console bridge now accepts same-origin
-  WebSocket connections, so a proxied deployment such as
-  `https://liberty.local:8443` works with no extra configuration.
-  `X-Forwarded-Host` is honoured. Cross-origin requests are still rejected.
-- **Frequency presets are back on Transport Config**, and usable over Reticulum,
-  but selecting one while connected over the mesh asks for confirmation first and
-  spells out that saving will take the node off the mesh permanently.
-- **Preset labels now carry their parameters** in the app's RNode interface
-  dropdown, matching the console: `Long Fast — SF11 / 250 kHz / CR 4:5 (★ LCS
-  Recommended)`. Long Fast remains the default.
-- **Short Slow renamed to "Average - Recommended for Speed"** in all three preset
-  dropdowns: the app's interface dropdown, the console's Node Config tab, and the
-  console's Transport Config tab.
-- **Reticulum 1.5.4 and LXST 0.5.3.**
+- **Block Contact** in a conversation's three-dot menu, backed by the same
+  Reticulum calls `rnpath -B/-U/-b` drives. Blocks are permanent until removed.
+- Identity resolution without needing a recent announce: RNS's persisted
+  known-destinations table, then MeshChat's own announce records, then a path
+  request.
+- **Block an identity directly** by pasting its hash in Settings. The
+  `<angle bracket>` form RNS prints is accepted, as is colon-delimited hex.
+- **Publish** your blocked list for others to subscribe to, served at
+  `rnstransport.info.blackhole`, and **subscribe** to lists from transport
+  instances you trust, with a configurable update interval.
+- Blocking is identity-scoped and applies to your own network segments only.
+  Publish and subscribe settings are read by Reticulum at startup and need a
+  restart; blocking and unblocking do not.
+
+**Deployment**
+
+- Runs behind an HTTPS reverse proxy with no extra configuration — the bridge
+  accepts same-origin WebSocket connections and tolerates a proxy that strips the
+  port from the `Host` header.
+- Origin allowlist on the bridge, since WebSockets bypass CORS, plus an optional
+  `--rns-bridge-token` shared secret.
+- Draft releases get a generated body: the matching section of
+  `docs/CHANGELOG.md`, followed by the commits since the previous tag.
 
 ### Privacy
 
@@ -76,85 +99,6 @@ that the installer is not commonly downloaded. This is a reputation check on the
 signature of the file, not a finding about its content — it appears for any new
 unsigned binary regardless of what it does. See `docs/code-signing.md` for the
 status of signing.
-
-### What's new in v1.9.2
-
-- **Block an identity directly** — Settings → Blackhole takes an identity hash with
-  an optional reason. No announce or prior contact is needed, since Reticulum blocks
-  identities rather than destinations. The `<angle bracket>` form RNS prints is
-  accepted, as is colon-delimited hex.
-- **Block Contact no longer depends on a recent announce** — it resolves the peer's
-  identity from RNS's persisted known-destinations table, then from MeshChat's own
-  announce records, and finally by requesting a path so the announce is re-sent.
-  It only fails if the destination has never been heard from at all, and says to
-  paste the identity hash directly if so.
-- **Release notes in the draft release** — the build workflow now generates the
-  release body from this README's "What's new" section for the version being built,
-  followed by the commits since the previous tag.
-- **Clearer subscription wording** — the hash a subscriber adds as a source is the
-  publisher's *transport instance* identity, which is a different key from your
-  MeshChat identity.
-
-### What's new in v1.9.1
-
-**Blackhole management.** Conversations now have a **Block Contact** action in the
-three-dot menu, and Settings gains a Blackhole section.
-
-- **Block Contact** resolves the peer's destination hash to its identity hash and
-  adds it to Reticulum's blackhole list — the same list `rnpath -B` writes.
-  Announces from that identity are dropped and this node stops routing traffic to
-  any of its destinations. It takes effect immediately.
-- **Blocked list** in Settings shows everything blocked, whether you added it or a
-  subscribed source did, with expiry and reason, and lets you unblock.
-- **Publish** your list so other nodes can subscribe to it, served at
-  `rnstransport.info.blackhole`.
-- **Subscribe** to lists published by transport instances you trust, with a
-  configurable update interval.
-
-Blocking is identity-scoped and applies to your own network segments only. There is
-no way to block anyone globally in Reticulum, and other nodes can still carry their
-traffic. Publish and subscribe settings are read by Reticulum at startup, so those
-need a restart; blocking and unblocking do not.
-
-### What's new in v1.9.0
-
-**Remote transport node management over Reticulum.** The Transport Node Console
-in Tools can now reach RNode transport nodes anywhere on the mesh, not just ones
-attached over USB, Bluetooth or the local network.
-
-- **RNS console bridge** (`src/backend/rns_link_bridge.py`) — MeshChat's web
-  server now answers the console's `rns.link.*` WebSocket protocol at `/rns/ws`
-  and turns it into real Reticulum Link + Request traffic aimed at a node's
-  `/provision` handler. It runs on the RNS instance and identity MeshChat
-  already has: no extra daemon, no second identity store, no extra port.
-- **Console auto-connect** — the Transport Node Console finds the bridge by
-  itself. It probes the same origin first, so it works whether the console is
-  opened from the Tools page, from disk, or from a hosted copy, and reports the
-  actual cause when a browser blocks the connection rather than just failing.
-- **Setup instructions** — selecting the LCS MeshChat transport now explains the
-  one-time wired step: add your Identity Hash to the node's *Remote management
-  allowed* list over USB-C serial before the node will answer you over the mesh.
-- **Modem parameter warning** — Transport Config warns, when the node is reached
-  over Reticulum, that changing frequency, bandwidth, SF or CR makes the node
-  stop matching the mesh that carried the command, with no path left to undo it.
-  Modem parameters need a USB-C serial connection.
-- **Naming** — the console's transport is labelled "RNS (via LCS MeshChat)".
-- **Deep links** — the console accepts `?dest=`, `?aspect=`, `?transport=`,
-  `?ws=`, `?port=`, `?token=` and `?identify=0`, so a node can be linked to
-  directly.
-- **Origin allowlist** — WebSockets bypass CORS, so the bridge only accepts
-  loopback origins and `file://` pages by default. `--rns-bridge-token` adds a
-  shared secret, `--rns-bridge-allow-origin` permits a hosted console, and
-  `--disable-rns-bridge` turns the whole thing off.
-
-Over RNS the console exposes Node Status and Transport Config. Logs and Node
-Config still need Serial, Bluetooth or a LAN WebSocket — they rely on legacy
-KISS opcodes that don't survive the Reticulum hop. Nodes must be announcing on
-`rnstransport.remote.management`, and your MeshChat identity hash has to be in
-the node's `/provision` ALLOW_LIST.
-
-See `docs/rns-console-bridge.md` for the protocol details and why
-`attermann/ReticulumAPI` is not a drop-in substitute.
 
 ### Docker
 
@@ -187,11 +131,289 @@ The app is then on `http://<host>:8082`, and the Transport Node Console on
 **Voice calls need HTTPS.** The container has no audio hardware, so calls use the
 browser's microphone and speaker over a WebSocket audio bridge — and browsers only
 grant microphone access in a secure context. Put an HTTPS reverse proxy in front of
-it. `docs/REVERSE_PROXY_SETUP.md` has working nginx configurations for OpenWrt and
-Debian, certificate generation, firewall rules, and how to verify it.
+it. Working nginx configurations for OpenWrt 24.10 and Debian follow below.
 
 `LCS_DOCKER=1` tells the app it is containerised so it uses the browser audio
 bridge. Leave it set.
+
+#### HTTPS reverse proxy
+
+When LCS MeshChat runs in Docker, voice calls use **your browser's** microphone and speaker
+over a WebSocket audio bridge — the container has no audio hardware of its own. Browsers
+only grant microphone access in a **secure context**, so the app must be reached over
+**HTTPS** (or `localhost`). This guide sets up an nginx reverse proxy to provide that.
+
+**Prerequisites**
+
+- LCS MeshChat running in Docker with the container port published to the host
+- `LCS_DOCKER=1` set in the container environment
+
+```yaml
+services:
+  reticulum-meshchat:
+    container_name: reticulum-meshchat
+    image: ghcr.io/daylight-hub/reticulum-meshchat:latest
+    restart: unless-stopped
+    network_mode: bridge          # own namespace -> no host port conflicts
+    environment:
+      - LCS_DOCKER=1
+    ports:
+      - 8082:8000
+    volumes:
+      - /opt/reticulum-meshchat:/config
+    command: >
+      python meshchat.py --host=0.0.0.0 --port=8000
+      --reticulum-config-dir=/config/.reticulum
+      --storage-dir=/config/.meshchat --headless
+```
+
+nginx listens on **8443 (HTTPS)** and proxies to **127.0.0.1:8082**, which Docker maps to
+the container's port 8000.
+
+---
+
+#### OpenWrt 24.10
+
+**1. Install nginx with SSL support**
+
+```sh
+opkg update
+opkg install nginx-ssl
+```
+
+**2. Generate a self-signed certificate**
+
+Use the hostname you will actually type in the browser — see the note on hostnames below.
+
+```sh
+mkdir -p /etc/nginx/ssl
+openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+  -keyout /etc/nginx/ssl/meshchat.key \
+  -out /etc/nginx/ssl/meshchat.crt \
+  -subj "/CN=liberty.local" \
+  -addext "subjectAltName=DNS:liberty.local,IP:192.168.2.1"
+```
+
+**3. Create `/etc/nginx/conf.d/meshchat.conf`**
+
+```nginx
+server {
+    listen 8443 ssl;
+    server_name liberty.local;
+
+    ssl_certificate     /etc/nginx/ssl/meshchat.crt;
+    ssl_certificate_key /etc/nginx/ssl/meshchat.key;
+
+    client_max_body_size 100M;
+
+    location / {
+        proxy_pass http://127.0.0.1:8082;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+}
+```
+
+**4. Test and restart**
+
+OpenWrt's nginx is UCI-managed and runs with an explicit config path:
+
+```sh
+nginx -t -c /etc/nginx/uci.conf
+/etc/init.d/nginx restart
+/etc/init.d/nginx enable
+```
+
+**5. Allow port 8443 from the LAN**
+
+```sh
+uci add firewall rule
+uci set firewall.@rule[-1].name='Allow-MeshChat-HTTPS'
+uci set firewall.@rule[-1].src='lan'
+uci set firewall.@rule[-1].proto='tcp'
+uci set firewall.@rule[-1].dest_port='8443'
+uci set firewall.@rule[-1].target='ACCEPT'
+uci commit firewall
+/etc/init.d/firewall restart
+```
+
+**6. Open the app**
+
+```
+https://liberty.local:8443
+```
+
+---
+
+#### Debian
+
+**1. Install nginx**
+
+```sh
+sudo apt update
+sudo apt install nginx openssl
+```
+
+**2. Create a certificate**
+
+For a LAN host, self-signed (substitute your own hostname and IP):
+
+```sh
+sudo mkdir -p /etc/nginx/ssl
+sudo openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+  -keyout /etc/nginx/ssl/meshchat.key \
+  -out /etc/nginx/ssl/meshchat.crt \
+  -subj "/CN=meshchat.local" \
+  -addext "subjectAltName=DNS:meshchat.local,IP:192.168.1.50"
+sudo chmod 600 /etc/nginx/ssl/meshchat.key
+```
+
+If the machine has a public domain name, use Let's Encrypt instead and avoid browser
+certificate warnings entirely:
+
+```sh
+sudo apt install certbot python3-certbot-nginx
+sudo certbot --nginx -d meshchat.example.com
+```
+
+**3. Create `/etc/nginx/sites-available/meshchat`**
+
+```nginx
+server {
+    listen 8443 ssl;
+    listen [::]:8443 ssl;
+    server_name meshchat.local;
+
+    ssl_certificate     /etc/nginx/ssl/meshchat.crt;
+    ssl_certificate_key /etc/nginx/ssl/meshchat.key;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+
+    client_max_body_size 100M;
+
+    location / {
+        proxy_pass http://127.0.0.1:8082;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+}
+```
+
+**4. Enable the site and reload**
+
+```sh
+sudo ln -s /etc/nginx/sites-available/meshchat /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+sudo systemctl enable nginx
+```
+
+**5. Allow port 8443** (if `ufw` is active)
+
+```sh
+sudo ufw allow 8443/tcp
+```
+
+**6. Open the app**
+
+```
+https://meshchat.local:8443
+```
+
+---
+
+#### The Transport Node Console over the proxy
+
+The console is served from the same origin as the app, at:
+
+```
+https://liberty.local:8443/transport-console/index.html
+```
+
+It finds the RNS bridge by itself and shows a green **RNS bridge found** banner.
+No extra flag is needed: since v1.9.4 the bridge accepts same-origin WebSocket
+connections, and it tolerates `proxy_set_header Host $host` stripping the port.
+Cross-origin connections are still refused.
+
+If the banner does not appear, the `Upgrade` and `Connection` headers above are
+almost always the cause — the same headers the audio bridge needs.
+
+#### Verifying the setup
+
+Check that the proxy reaches the app:
+
+```sh
+curl -skI https://liberty.local:8443/api/v1/app/info
+```
+
+A `200 OK` response means the proxy is routing correctly.
+
+Then open the app in a browser. If Docker is being detected properly, the **"Add LCS
+Interfaces"** button will be **absent** from the header — that button only appears on
+desktop installs. Its absence confirms the browser audio bridge is active.
+
+To confirm the microphone is available, open the browser console (F12) and run:
+
+```js
+navigator.mediaDevices.getUserMedia({ audio: true })
+  .then(() => console.log("microphone OK"))
+  .catch(e => console.log("microphone blocked:", e.name));
+```
+
+---
+
+#### Important notes
+
+**Always use the hostname, not the IP address.** The certificate is issued for a hostname
+(`liberty.local`). If you browse to `https://192.168.2.1:8443` instead, the browser may
+silently block the app's API and WebSocket requests even after you accept the certificate
+warning — the page loads but calls will not work. The `subjectAltName` in the commands
+above covers both the hostname and the IP, but the hostname remains the reliable choice.
+
+**HTTPS is required, not optional.** Browsers only allow `getUserMedia` (microphone access)
+in a secure context. Without HTTPS, calls will connect but carry no audio.
+
+**Do not omit the WebSocket headers.** `proxy_http_version 1.1` together with the `Upgrade`
+and `Connection` headers is what allows both the application event socket and the audio
+bridge at `/api/v1/telephone/audio-bridge` to work. Without them, calls connect but no
+audio passes in either direction.
+
+**Self-signed certificates show a browser warning.** Accept it once per device. For a
+cleaner result, either install the certificate as trusted on client devices or use Let's
+Encrypt with a real domain name.
+
+**The bridge is reachable directly on port 8082.** `--host=0.0.0.0` inside the
+container means the published port bypasses the proxy entirely. Browsers are
+stopped by the origin check, but a scripted client can send any `Origin` it
+likes, and the RNS bridge can reboot and reconfigure remote nodes. Either bind
+the published port to loopback as below, or add `--rns-bridge-token SECRET` to
+the command and append `?token=SECRET` to the console's WebSocket field.
+
+**Optional hardening.** If MeshChat and nginx run on the same machine, publish the
+container port on loopback only:
+
+```yaml
+ports:
+  - 127.0.0.1:8082:8000
+```
+
+This prevents direct unencrypted access on port 8082 and forces all traffic through the
+HTTPS proxy.
 
 ### Build & deploy
 
