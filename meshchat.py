@@ -34,6 +34,8 @@ from src.backend.colour_utils import ColourUtils
 from src.backend.interface_config_parser import InterfaceConfigParser
 from src.backend.interface_editor import InterfaceEditor
 from src.backend.lxmf_message_fields import LxmfImageField, LxmfFileAttachmentsField, LxmfFileAttachment, LxmfAudioField
+from src.backend.rns_link_bridge import BridgeConfig, LocalBackend, attach_to_app, run_standalone
+from src.backend.blackhole import BlackholeManager
 from src.backend.sideband_commands import SidebandCommands
 
 # hack to avoid below error on windows from soundcard/mediafoundation.py in self._record_chunk()
@@ -565,7 +567,7 @@ class ReticulumMeshChat:
         self.reticulum.exit_handler()
         RNS.exit()
 
-    def run(self, host, port, launch_browser: bool):
+    def run(self, host, port, launch_browser: bool, rns_bridge_options: dict = None):
 
         # create route table
         routes = web.RouteTableDef()
@@ -2809,12 +2811,178 @@ class ReticulumMeshChat:
                     print("failed to launch web browser")
 
         # create and run web app
+        # blackhole management
+        # blocking works on identity hashes and applies to this node's own
+        # network segments only, exactly as rnpath -B/-U/-b does
+        @routes.get("/api/v1/blackhole")
+        async def index(request):
+            manager = self.get_blackhole_manager()
+            return web.json_response({
+                "blackholed": manager.list(),
+                "config": manager.get_config(),
+            })
+
+        @routes.post("/api/v1/blackhole")
+        async def index(request):
+
+            data = await request.json()
+
+            # duration arrives in hours, matching rnpath --duration
+            until = None
+            duration_hours = data.get("duration_hours")
+            if duration_hours is not None and str(duration_hours).strip() != "":
+                try:
+                    until = time.time() + (float(duration_hours) * 3600)
+                except (TypeError, ValueError):
+                    return web.json_response({"message": "duration_hours must be a number"}, status=422)
+
+            manager = self.get_blackhole_manager()
+
+            try:
+
+                # resolve the identity first, asking the network for an announce if
+                # it is not already known locally, then block the identity itself
+                identity_hash = await manager.resolve_identity_hash_async(
+                    identity_hash=data.get("identity_hash"),
+                    destination_hash=data.get("destination_hash"),
+                    request_timeout=float(data.get("request_timeout", 15)),
+                )
+
+                result = manager.block(
+                    identity_hash=identity_hash.hex(),
+                    reason=data.get("reason"),
+                    until=until,
+                )
+
+            except ValueError as e:
+                return web.json_response({"message": str(e)}, status=422)
+
+            return web.json_response(result)
+
+        @routes.delete("/api/v1/blackhole/{identity_hash}")
+        async def index(request):
+            try:
+                result = self.get_blackhole_manager().unblock(
+                    identity_hash=request.match_info.get("identity_hash", ""))
+            except ValueError as e:
+                return web.json_response({"message": str(e)}, status=422)
+            return web.json_response(result)
+
+        @routes.get("/api/v1/blackhole/config")
+        async def index(request):
+            return web.json_response({"config": self.get_blackhole_manager().get_config()})
+
+        @routes.patch("/api/v1/blackhole/config")
+        async def index(request):
+            data = await request.json()
+            try:
+                config = self.get_blackhole_manager().set_config(
+                    publish_blackhole=data.get("publish_blackhole"),
+                    blackhole_sources=data.get("blackhole_sources"),
+                    blackhole_update_interval=data.get("blackhole_update_interval"),
+                )
+            except ValueError as e:
+                return web.json_response({"message": str(e)}, status=422)
+            return web.json_response({"config": config})
+
         app = web.Application(client_max_size=1024 * 1024 * 50)  # allow uploading files up to 50mb
         app.add_routes(routes)
+
+        # mount the rns link bridge and the microreticulum rnode console.
+        # this has to happen before the catch-all static route below, otherwise
+        # the static resource matches /console and /rns/ws first and 404s them.
+        self.setup_rns_bridge(app, host, rns_bridge_options)
+
         app.add_routes([web.static('/', get_file_path("public/"))])  # serve anything in public folder
         app.on_shutdown.append(self.shutdown)  # need to force close websockets and stop reticulum now
         app.on_startup.append(on_startup)
         web.run_app(app, host=host, port=port)
+
+    # blackhole manager, created on first use so it always wraps the live
+    # reticulum instance rather than a copy captured at startup
+    def get_blackhole_manager(self):
+        if getattr(self, "blackhole_manager", None) is None:
+            self.blackhole_manager = BlackholeManager(
+                self.reticulum,
+                identity_hash_lookup=self.find_identity_hash_for_destination,
+            )
+        return self.blackhole_manager
+
+    # every announce meshchat has ever seen is stored with the identity hash that
+    # sent it, so a peer can be resolved without asking the network at all
+    def find_identity_hash_for_destination(self, destination_hash):
+        announce = database.Announce.get_or_none(
+            database.Announce.destination_hash == destination_hash)
+        return announce.identity_hash if announce is not None else None
+
+    # sets up the websocket bridge that lets the microreticulum rnode console
+    # open reticulum links to remote transport nodes through this meshchat
+    # instance, plus the local copy of the console itself.
+    def setup_rns_bridge(self, app, host, rns_bridge_options: dict = None):
+
+        options = rns_bridge_options or {}
+        if options.get("enabled", True) is False:
+            return
+
+        # the console drives reboot, eeprom wipe and radio reconfiguration on
+        # remote nodes, and websockets are not subject to cors, so every page
+        # in every tab can reach this endpoint. the origin allow list below is
+        # what stops that; loopback origins and file:// pages are allowed, and
+        # anything else has to be named explicitly.
+        config = BridgeConfig(
+            token=options.get("token"),
+            allowed_origins=tuple(options.get("allowed_origins") or ()),
+            request_timeout=options.get("request_timeout") or 30.0,
+        )
+
+        # identity matters here: this is the identity presented to the remote
+        # node when the console asks to authenticate, so it needs to be the one
+        # the node operator put in their /provision allow list. using the same
+        # identity meshchat announces means the hash the user already knows is
+        # the hash that gets allowed.
+        def backend_factory():
+            return LocalBackend(identity=self.identity)
+
+        attach_to_app(
+            app,
+            backend_factory=backend_factory,
+            config=config,
+        )
+
+        if host not in ["127.0.0.1", "localhost", "::1"] and config.token is None:
+            print("WARNING: the RNS console bridge is reachable from the network "
+                  "because --host is not loopback. Pass --rns-bridge-token to require a token.")
+
+        # optional second listener on a fixed port, for a console opened from
+        # disk or from a hosted copy, where meshchat's port is not known in
+        # advance. off by default: the electron app already runs meshchat
+        # itself on 9337, so a second listener there would collide.
+        # bound to loopback regardless of --host.
+        bridge_port = options.get("port")
+        if bridge_port is None:
+            return
+
+        async def start_rns_bridge_listener(app):
+            try:
+                app["rns_bridge_runner"] = await run_standalone(
+                    backend_factory=backend_factory,
+                    config=config,
+                    host="127.0.0.1",
+                    port=bridge_port,
+                )
+                print("RNS console bridge listening on ws://127.0.0.1:{}/ws".format(bridge_port))
+            except Exception as e:
+                # a busy port must not stop meshchat from starting, the bridge
+                # is still available on meshchat's own port at /rns/ws
+                print("failed to start RNS console bridge on port {}: {}".format(bridge_port, e))
+
+        async def stop_rns_bridge_listener(app):
+            runner = app.get("rns_bridge_runner")
+            if runner is not None:
+                await runner.cleanup()
+
+        app.on_startup.append(start_rns_bridge_listener)
+        app.on_cleanup.append(stop_rns_bridge_listener)
 
     # handle announcing
     async def announce(self):
@@ -4408,6 +4576,10 @@ def main():
     parser.add_argument("--host", nargs='?', default="127.0.0.1", type=str, help="The address the web server should listen on.")
     parser.add_argument("--port", nargs='?', default="8000", type=int, help="The port the web server should listen on.")
     parser.add_argument("--headless", action='store_true', help="Web browser will not automatically launch when this flag is passed.")
+    parser.add_argument("--disable-rns-bridge", action='store_true', help="Disables the RNS console bridge used by the microReticulum RNode Console.")
+    parser.add_argument("--rns-bridge-port", nargs='?', default=None, type=int, help="Also serve the RNS console bridge on this fixed loopback port. Off by default; the bridge is always available on MeshChat's own port at /rns/ws.")
+    parser.add_argument("--rns-bridge-token", type=str, help="Require this token as a ?token= query param on the RNS console bridge WebSocket.")
+    parser.add_argument("--rns-bridge-allow-origin", action='append', help="Allow an extra browser Origin to use the RNS console bridge. Can be passed multiple times.")
     parser.add_argument("--identity-file", type=str, help="Path to a Reticulum Identity file to use as your LXMF address.")
     parser.add_argument("--identity-base64", type=str, help="A base64 encoded Reticulum Identity to use as your LXMF address.")
     parser.add_argument("--generate-identity-file", type=str, help="Generates and saves a new Reticulum Identity to the provided file path and then exits.")
@@ -4476,7 +4648,12 @@ def main():
 
     # init app
     reticulum_meshchat = ReticulumMeshChat(identity, args.storage_dir, args.reticulum_config_dir)
-    reticulum_meshchat.run(args.host, args.port, launch_browser=args.headless is False)
+    reticulum_meshchat.run(args.host, args.port, launch_browser=args.headless is False, rns_bridge_options={
+        "enabled": args.disable_rns_bridge is False,
+        "port": args.rns_bridge_port,
+        "token": args.rns_bridge_token,
+        "allowed_origins": args.rns_bridge_allow_origin,
+    })
 
 
 if __name__ == "__main__":

@@ -35,6 +35,16 @@
                 <span>Set Custom Display Name</span>
             </DropDownMenuItem>
 
+            <!-- block contact button -->
+            <div class="border-t">
+                <DropDownMenuItem @click="onBlockContact">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="size-5 text-amber-600">
+                        <path fill-rule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25Zm-7.5 9.75a7.5 7.5 0 0 1 11.98-6.02L5.98 17.48A7.47 7.47 0 0 1 4.5 12Zm3.02 6.02L18.02 7.52a7.5 7.5 0 0 1-10.5 10.5Z" clip-rule="evenodd" />
+                    </svg>
+                    <span class="text-amber-600">Block Contact</span>
+                </DropDownMenuItem>
+            </div>
+
             <!-- delete message history button -->
             <div class="border-t">
                 <DropDownMenuItem @click="onDeleteMessageHistory">
@@ -68,8 +78,49 @@ export default {
     emits: [
         "conversation-deleted",
         "set-custom-display-name",
+        "contact-blocked",
     ],
     methods: {
+        async onBlockContact() {
+
+            // blocking is identity scoped and only applies to our own network
+            // segments, so be clear about what it does and does not do
+            const confirmed = await DialogUtils.confirm([
+                `Block ${this.peer.display_name ?? this.peer.destination_hash}?`,
+                "",
+                "This adds their identity to your blackhole list. Announces from them",
+                "will be dropped, and traffic to any of their destinations will not be",
+                "routed by this node.",
+                "",
+                "This only applies to your own network segments. It does not block them",
+                "globally, and other nodes can still carry their traffic.",
+                "",
+                "Blocking is permanent until you remove it in Settings.",
+            ].join("\n"));
+
+            if(!confirmed){
+                return;
+            }
+
+            try {
+
+                const response = await window.axios.post("/api/v1/blackhole", {
+                    destination_hash: this.peer.destination_hash,
+                });
+
+                if(response.data.already_blocked){
+                    DialogUtils.alert("This contact was already on your blackhole list.");
+                } else {
+                    DialogUtils.alert(`Blocked identity ${response.data.identity_hash}`);
+                }
+
+                this.$emit("contact-blocked", response.data.identity_hash);
+
+            } catch(e) {
+                DialogUtils.alert(e.response?.data?.message ?? "Failed to block contact.");
+            }
+
+        },
         async onDeleteMessageHistory() {
 
             // ask user to confirm deleting conversation history

@@ -94,6 +94,9 @@
                 </div>
             </div>
 
+            <!-- blackhole -->
+            <BlackholeSettings/>
+
             <!-- propagation nodes -->
             <div class="bg-white dark:bg-zinc-800 rounded shadow">
                 <div class="flex border-b border-gray-300 dark:border-zinc-700 text-gray-700 dark:text-gray-200 p-2 font-semibold">
@@ -178,9 +181,13 @@
 import Utils from "../../js/Utils";
 import WebSocketConnection from "../../js/WebSocketConnection";
 import DialogUtils from "../../js/DialogUtils";
+import BlackholeSettings from "./BlackholeSettings.vue";
 
 export default {
     name: 'SettingsPage',
+    components: {
+        BlackholeSettings,
+    },
     data() {
         return {
             config: {
