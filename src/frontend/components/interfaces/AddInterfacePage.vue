@@ -189,7 +189,7 @@
                         <select v-model="selectedRNodePreset" @change="applyRNodePreset" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-zinc-900 dark:border-zinc-600 dark:text-white dark:focus:ring-blue-600 dark:focus:border-blue-600">
                             <option :value="null">Custom (set values manually)</option>
                             <option v-for="preset in rnodePresets" :key="preset.name" :value="preset.name">
-                                {{ preset.name }}{{ preset.note ? ' — ' + preset.note : '' }}
+                                {{ preset.name }}{{ preset.params ? ' — ' + preset.params : '' }}{{ preset.note ? '  (★ ' + preset.note + ')' : '' }}
                             </option>
                         </select>
                         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
@@ -1071,14 +1071,14 @@ export default {
 
             selectedRNodePreset: null,
             rnodePresets: [
-                { name: "Short Turbo",   frequency: 914875000, bandwidth: 500000, spreadingfactor: 7,  codingrate: 5, txpower: 22, note: null },
-                { name: "Short Fast",    frequency: 914875000, bandwidth: 250000, spreadingfactor: 7,  codingrate: 5, txpower: 22, note: "Best for voice over LoRa" },
-                { name: "Short Slow",    frequency: 914875000, bandwidth: 250000, spreadingfactor: 8,  codingrate: 5, txpower: 22, note: null },
-                { name: "Medium Fast",   frequency: 914875000, bandwidth: 250000, spreadingfactor: 9,  codingrate: 5, txpower: 22, note: null },
-                { name: "Medium Slow",   frequency: 914875000, bandwidth: 250000, spreadingfactor: 10, codingrate: 5, txpower: 22, note: null },
-                { name: "Long Fast",     frequency: 914875000, bandwidth: 250000, spreadingfactor: 11, codingrate: 5, txpower: 22, note: "LCS Recommended" },
-                { name: "Long Moderate", frequency: 914875000, bandwidth: 125000, spreadingfactor: 11, codingrate: 8, txpower: 22, note: null },
-                { name: "Long Slow",     frequency: 914875000, bandwidth: 125000, spreadingfactor: 12, codingrate: 8, txpower: 22, note: null },
+                { name: "Short Turbo",   frequency: 914875000, bandwidth: 500000, spreadingfactor: 7,  codingrate: 5, params: "SF7 / 500 kHz / CR 4:5", txpower: 22, note: null },
+                { name: "Short Fast",    frequency: 914875000, bandwidth: 250000, spreadingfactor: 7,  codingrate: 5, params: "SF7 / 250 kHz / CR 4:5", txpower: 22, note: "Best for voice over LoRa" },
+                { name: "Average - Recommended for Speed", frequency: 914875000, bandwidth: 250000, spreadingfactor: 8,  codingrate: 5, params: "SF8 / 250 kHz / CR 4:5", txpower: 22, note: null },
+                { name: "Medium Fast",   frequency: 914875000, bandwidth: 250000, spreadingfactor: 9,  codingrate: 5, params: "SF9 / 250 kHz / CR 4:5", txpower: 22, note: null },
+                { name: "Medium Slow",   frequency: 914875000, bandwidth: 250000, spreadingfactor: 10, codingrate: 5, params: "SF10 / 250 kHz / CR 4:5", txpower: 22, note: null },
+                { name: "Long Fast",     frequency: 914875000, bandwidth: 250000, spreadingfactor: 11, codingrate: 5, params: "SF11 / 250 kHz / CR 4:5", txpower: 22, note: "LCS Recommended" },
+                { name: "Long Moderate", frequency: 914875000, bandwidth: 125000, spreadingfactor: 11, codingrate: 8, params: "SF11 / 125 kHz / CR 4:8", txpower: 22, note: null },
+                { name: "Long Slow",     frequency: 914875000, bandwidth: 125000, spreadingfactor: 12, codingrate: 8, params: "SF12 / 125 kHz / CR 4:8", txpower: 22, note: null },
             ],
 
             // Serial, KISS, and AX25KISS options

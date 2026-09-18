@@ -35,6 +35,38 @@ by Liam Cottle (MIT licensed — see `LICENSE`).
 - **Purchase link** — "Buy RNode Radios · lcs.network" in the sidebar and Tools.
 - **Version** — reports as LCS MeshChat, and the About page shows the LXST version.
 
+### What's new in v1.9.3
+
+- **Works behind a reverse proxy** — the console bridge now accepts same-origin
+  WebSocket connections, so a proxied deployment such as
+  `https://liberty.local:8443` works with no extra configuration.
+  `X-Forwarded-Host` is honoured. Cross-origin requests are still rejected.
+- **Frequency presets are back on Transport Config**, and usable over Reticulum,
+  but selecting one while connected over the mesh asks for confirmation first and
+  spells out that saving will take the node off the mesh permanently.
+- **Preset labels now carry their parameters** in the app's RNode interface
+  dropdown, matching the console: `Long Fast — SF11 / 250 kHz / CR 4:5 (★ LCS
+  Recommended)`. Long Fast remains the default.
+- **Short Slow renamed to "Average - Recommended for Speed"** in all three preset
+  dropdowns: the app's interface dropdown, the console's Node Config tab, and the
+  console's Transport Config tab.
+- **Reticulum 1.5.4 and LXST 0.5.3.**
+
+### Privacy
+
+LCS MeshChat does not collect, transmit or sell personal information. There is no
+telemetry, no analytics, no crash reporting and no account. Your identity keys,
+messages and configuration stay in your own storage directory on your own machine.
+Network traffic goes only to the Reticulum interfaces you configure yourself.
+The application is open source and the code in this repository is what is built
+into the released binaries.
+
+**A note on the Windows download warning.** Microsoft Edge and SmartScreen may warn
+that the installer is not commonly downloaded. This is a reputation check on the
+signature of the file, not a finding about its content — it appears for any new
+unsigned binary regardless of what it does. See `docs/code-signing.md` for the
+status of signing.
+
 ### What's new in v1.9.2
 
 - **Block an identity directly** — Settings → Blackhole takes an identity hash with

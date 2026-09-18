@@ -588,7 +588,9 @@ class BridgeConfig:
     allowed_origins  extra origins permitted in addition to loopback and file://.
                    Put your hosted console's origin here if you use one, e.g.
                    "https://daylight-hub.github.io".
-    allow_any_origin  disables the origin check entirely. Do not.
+    allow_any_origin  disables the origin check entirely. Do not. Same-origin
+                   requests are already accepted, so a reverse proxy does not
+                   need this.
     request_timeout  seconds allowed for one /provision round trip.
     """
     token: Optional[str] = None
@@ -598,19 +600,44 @@ class BridgeConfig:
     allow_file_origin: bool = True
 
 
-def origin_allowed(origin: Optional[str], cfg: BridgeConfig) -> bool:
+def request_host(request) -> str:
+    """
+    The host the browser actually asked for. Behind a reverse proxy the Host
+    header is often rewritten, so prefer the forwarded value when present.
+    """
+    forwarded = request.headers.get("X-Forwarded-Host", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip().lower()
+    return (request.headers.get("Host") or "").strip().lower()
+
+
+def origin_allowed(origin: Optional[str], cfg: BridgeConfig,
+                   host: Optional[str] = None) -> bool:
     if cfg.allow_any_origin:
         return True
+
     # file:// pages and some WebViews send Origin: null or no Origin at all.
     if origin in (None, "", "null"):
         return cfg.allow_file_origin
+
     if origin in cfg.allowed_origins:
         return True
+
     try:
         parsed = urlparse(origin)
     except ValueError:
         return False
-    return (parsed.hostname or "").lower() in LOOPBACK_HOSTS
+
+    if (parsed.hostname or "").lower() in LOOPBACK_HOSTS:
+        return True
+
+    # Same origin: the page asking for the socket is the page MeshChat itself
+    # just served, which is the whole legitimate case. This is what makes a
+    # reverse-proxied deployment work without having to name its hostname.
+    if host and parsed.netloc.lower() == host:
+        return True
+
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -631,7 +658,7 @@ class RnsLinkBridge:
 
     async def handle(self, request: web.Request) -> web.WebSocketResponse:
         origin = request.headers.get("Origin")
-        if not origin_allowed(origin, self.config):
+        if not origin_allowed(origin, self.config, request_host(request)):
             log.warning("rns bridge: rejected origin %r", origin)
             return web.Response(status=403, text="origin not allowed")
 
