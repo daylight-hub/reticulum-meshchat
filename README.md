@@ -35,6 +35,16 @@ by Liam Cottle (MIT licensed — see `LICENSE`).
 - **Purchase link** — "Buy RNode Radios · lcs.network" in the sidebar and Tools.
 - **Version** — reports as LCS MeshChat, and the About page shows the LXST version.
 
+### What's new in v1.9.4
+
+- **Reverse proxy fix** — the same-origin check now tolerates a proxy that strips
+  the port from the `Host` header, which is what nginx's `proxy_set_header Host
+  $host` does. v1.9.3 refused those connections with a 403.
+- **Docker and reverse proxy documentation** — see the Docker section above and
+  `docs/REVERSE_PROXY_SETUP.md`.
+- **Corrected code signing guidance** in `docs/code-signing.md`: EV certificates
+  have not granted instant SmartScreen reputation since 2024.
+
 ### What's new in v1.9.3
 
 - **Works behind a reverse proxy** — the console bridge now accepts same-origin
@@ -145,6 +155,43 @@ the node's `/provision` ALLOW_LIST.
 
 See `docs/rns-console-bridge.md` for the protocol details and why
 `attermann/ReticulumAPI` is not a drop-in substitute.
+
+### Docker
+
+```yaml
+services:
+  reticulum-meshchat:
+    container_name: reticulum-meshchat
+    image: ghcr.io/daylight-hub/reticulum-meshchat:latest
+    restart: unless-stopped
+    network_mode: bridge          # own namespace -> no host port conflicts
+    environment:
+      - LCS_DOCKER=1
+    ports:
+      - 8082:8000
+    volumes:
+      - /opt/reticulum-meshchat:/config
+    command: >
+      python meshchat.py --host=0.0.0.0 --port=8000
+      --reticulum-config-dir=/config/.reticulum
+      --storage-dir=/config/.meshchat --headless
+```
+
+```sh
+docker compose up -d
+```
+
+The app is then on `http://<host>:8082`, and the Transport Node Console on
+`http://<host>:8082/transport-console/index.html`.
+
+**Voice calls need HTTPS.** The container has no audio hardware, so calls use the
+browser's microphone and speaker over a WebSocket audio bridge — and browsers only
+grant microphone access in a secure context. Put an HTTPS reverse proxy in front of
+it. `docs/REVERSE_PROXY_SETUP.md` has working nginx configurations for OpenWrt and
+Debian, certificate generation, firewall rules, and how to verify it.
+
+`LCS_DOCKER=1` tells the app it is containerised so it uses the browser audio
+bridge. Leave it set.
 
 ### Build & deploy
 

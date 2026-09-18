@@ -634,8 +634,16 @@ def origin_allowed(origin: Optional[str], cfg: BridgeConfig,
     # Same origin: the page asking for the socket is the page MeshChat itself
     # just served, which is the whole legitimate case. This is what makes a
     # reverse-proxied deployment work without having to name its hostname.
-    if host and parsed.netloc.lower() == host:
-        return True
+    if host:
+        origin_netloc = parsed.netloc.lower()
+        if origin_netloc == host:
+            return True
+        # nginx's $host strips the port, so a proxy configured the common way
+        # sends "liberty.local" while the browser's Origin says
+        # "liberty.local:8443". Compare hostnames when the forwarded value
+        # carries no port of its own.
+        if ":" not in host and (parsed.hostname or "").lower() == host:
+            return True
 
     return False
 

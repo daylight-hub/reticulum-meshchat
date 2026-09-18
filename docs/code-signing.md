@@ -12,45 +12,80 @@ Unsigned builds show "isn't commonly downloaded" or "can't be trusted". Signed
 builds accrue reputation and stop warning once enough installs have happened,
 with the exception of EV certificates, which start trusted.
 
-## The two routes
+## There is no longer any way to remove the warning immediately
 
-| | OV (Organisation Validation) | EV (Extended Validation) |
-|---|---|---|
-| Cost | roughly $200-400/year | roughly $300-600/year |
-| SmartScreen | reputation builds over weeks and hundreds of installs | trusted immediately |
-| Key storage | HSM or cloud signing service (required since June 2023) | hardware token or cloud HSM |
-| Identity proof | business registration and a verifiable phone listing | the same, plus stricter checks |
+This changed in 2024 and most of the internet has not caught up. Microsoft's own
+documentation now states that EV certificates no longer bypass SmartScreen, that
+all code signing certificates are treated equally, and that paying a premium for
+EV solely to avoid SmartScreen warnings is no longer justified. Resellers still
+advertise "instant SmartScreen trust" for EV. That claim is out of date.
 
-Since June 2023 every code signing certificate must have its private key on
-certified hardware, so the old "download a .pfx" flow no longer exists for either
-type.
+Reputation is now earned by download volume, for both OV and EV, and it attaches
+to the certificate thumbprint **and** the file hash. Every new build starts its
+file-hash reputation from zero and inherits the publisher reputation of the
+certificate that signed it.
 
-## Recommended: Azure Trusted Signing
+The one exception: applications distributed through the Microsoft Store are
+re-signed by Microsoft and carry full reputation, so Store-installed apps never
+show the warning.
 
-The cheapest current option and the least painful to automate. Around $10/month,
-with the key held in Azure's HSM so there is no token to manage or lose.
+## Self-signed certificates do not work
 
-1. You need a legal entity — a registered business — with three or more years of
-   verifiable history, or Microsoft's identity validation for newer ones.
-2. In the Azure portal, create a **Trusted Signing account**, then an **Identity
-   Validation** request. Expect a few business days.
-3. Create a **Certificate Profile** once validation passes.
-4. Give your GitHub Actions workflow an Azure service principal with the
-   **Trusted Signing Certificate Profile Signer** role.
-5. Add the `azure/trusted-signing-action` step after electron-builder produces
-   the artifacts, pointing it at the `.exe` files in `dist/`.
-6. Store the credentials as repository secrets. Never commit them.
+A certificate you generate yourself is not chained to a trusted root, so Windows
+cannot verify the publisher at all. This makes the warnings worse, not better,
+and adds a second complaint about an untrusted issuer. Signing is only useful
+with a certificate from a CA in the Microsoft Trusted Root Program.
 
-## The traditional route
+## What a company under three years old can get
 
-If Trusted Signing is not available in your region, buy an OV certificate from
-DigiCert, Sectigo or SSL.com. Sectigo is usually cheapest. You will be issued a
-cloud HSM account or posted a USB token, and electron-builder can then sign via
-the provider's signing tool.
+| | Azure Artifact Signing | OV from a commercial CA | EV from a commercial CA |
+|---|---|---|---|
+| Company under 3 years | **not eligible** | yes | yes |
+| Region limits | US and Canada only | none | none |
+| Cost | from about $10/month | roughly $200-400/yr | roughly $280-600/yr |
+| SmartScreen | builds over time | builds over time | builds over time |
+| Kernel drivers | no | no | yes |
 
-EV is only worth the premium if you cannot tolerate a warning during the
-reputation-building window. For a project with a modest download volume, an OV
-certificate may take a while to clear the threshold.
+Microsoft requires three or more years of verifiable organisational history for
+Artifact Signing (formerly Trusted Signing), with **no exception path** and no
+manual override, and it is limited to organisations registered in the US or
+Canada. A company under a year old cannot use it yet.
+
+Commercial CAs have no such age rule. A newly registered company can obtain OV,
+or EV, by providing registration documents, a verifiable phone listing, and
+sometimes a legal or accountant's letter. Sectigo and SSL.com are usually the
+cheapest.
+
+Given that EV no longer helps with SmartScreen, **OV is the sensible purchase**
+unless you need kernel-mode driver signing or an enterprise customer's
+procurement demands EV.
+
+Since June 2023 the private key for any publicly trusted code signing
+certificate must live on certified hardware, so the old downloadable `.pfx`
+workflow no longer exists for either type. You will get a cloud HSM account or a
+posted USB token.
+
+## If you stop paying
+
+**Existing releases keep working, provided you timestamped them.** A timestamped
+signature remains valid indefinitely after the certificate expires, because the
+timestamp proves the signing happened while the certificate was live. Always
+timestamp. Without it, signatures fail the moment the certificate lapses.
+
+What you lose is the ability to sign anything new. Unsigned builds you publish
+after that point start from zero reputation again.
+
+**You can restart later**, but reputation does not come back with you.
+Reputation is tied to the certificate thumbprint, so a new certificate begins at
+zero — this is true even of a straight renewal from the same CA under the same
+company name, which catches people out regularly. Teams that ship continuously
+dual-sign during the overlap window so the new certificate accumulates
+reputation before the old one lapses. If you let a certificate lapse entirely,
+budget for a fresh reputation-building period when you return.
+
+**None of this affects your ability to publish a release.** Signing is not
+required to build, tag, or distribute anything. GitHub Releases, your Docker
+image and the installers all work unsigned. The only difference is the warning.
 
 ## Until it is signed
 
